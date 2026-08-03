@@ -1,0 +1,56 @@
+import { loadDB } from '@/lib/storage'
+import Link from 'next/link'
+
+export const dynamic = 'force-dynamic'
+
+export default async function Home() {
+  const db = await loadDB()
+  const { placeName, placeNameEn, adminToken, bookingToken, openTime, closeTime } = db.settings
+  const halls = db.halls || []
+
+  return (
+    <div className="container">
+      <div className="home-hero">
+        <h1>{placeName || 'اكاديمية ايديكون للتدريب'}</h1>
+        <div className="en">{placeNameEn || 'EDUCON ACADEMY'}</div>
+        <p>{halls.length > 0 ? `${halls.length} قاعات جاهزة` : 'نظام إدارة حجز القاعات'}</p>
+      </div>
+
+      <div className="home-cards">
+        <a className="home-card" href="/display">
+          <div className="icon">◉</div>
+          <h3>شاشة العرض</h3>
+          <div className="small muted">للشاشة الثابتة في الواجهة (F11)</div>
+        </a>
+        <Link className="home-card" href={`/manage/${adminToken}`}>
+          <div className="icon">⚙</div>
+          <h3>لوحة التحكم</h3>
+          <div className="small muted">إدارة القاعات والمدرسين والمواعيد</div>
+        </Link>
+        <Link className="home-card" href={`/book/${bookingToken}`}>
+          <div className="icon">✦</div>
+          <h3>الحجز الخارجي</h3>
+          <div className="small muted">أرسل هذا الرابط للمدرسين</div>
+        </Link>
+      </div>
+
+      {halls.length > 0 && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <h3 style={{ marginTop: 0 }}>الأسعار</h3>
+          <table className="price-table">
+            <thead><tr><th>القاعة</th><th>سعر الساعة</th><th>ساعات العمل</th></tr></thead>
+            <tbody>
+              {halls.map(h => (
+                <tr key={h.id}>
+                  <td><span className="dot" style={{ background: h.color }} />{h.name}</td>
+                  <td>{h.pricePerHour} جنيه</td>
+                  <td className="muted">{Math.floor(openTime / 60)}:{String(openTime % 60).padStart(2, '0')} - {Math.floor(closeTime / 60)}:{String(closeTime % 60).padStart(2, '0')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}

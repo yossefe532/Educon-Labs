@@ -1,0 +1,516 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  DAY_NAMES, fmtTime, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr
+} from '@/lib/time'
+
+const HOUR_H = 46
+
+function shade(hex, pct) {
+  const n = parseInt(hex.slice(1), 16)
+  const r = Math.round(((n >> 16) & 255) * (1 - pct))
+  const g = Math.round(((n >> 8) & 255) * (1 - pct))
+  const b = Math.round((n & 255) * (1 - pct))
+  return `rgb(${r},${g},${b})`
+}
+
+function blkBg(color) {
+  return `linear-gradient(135deg, ${color} 0%, ${shade(color, 0.3)} 100%)`
+}
+
+function resizeImage(file, maxSize = 160, quality = 0.55) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const c = document.createElement('canvas')
+        let w = img.width, h = img.height
+        if (w > h) { if (w > maxSize) { h = h * maxSize / w; w = maxSize } }
+        else { if (h > maxSize) { w = w * maxSize / h; h = maxSize } }
+        c.width = w; c.height = h
+        c.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(c.toDataURL('image/jpeg', quality))
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function field(label, node, key) {
+  return <div className="field" key={key}><span className="label">{label}</span>{node}</div>
+}
+
+export default function Admin({ token }) {
+  const [db, setDb] = useState(null)
+  const [authed, setAuthed] = useState(false)
+  const [tab, setTab] = useState('schedule')
+  const [toast, setToast] = useState(null)
+  const [modal, setModal] = useState(null)
+
+  const showToast = useCallback((msg, err) => {
+    setToast({ msg, err })
+    setTimeout(() => setToast(null), 3200)
+  }, [])
+
+  const fetchState = useCallback(async () => {
+    const r = await fetch('/api/state')
+    const j = await r.json()
+    if (j && j.settings) setDb(j)
+    return j
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/me').then(r => r.json()).then(j => {
+      setAuthed(j.authed)
+      fetchState()
+    }).catch(() => fetchState())
+  }, [fetchState])
+
+  const mutate = useCallback(async (payload) => {
+    const headers = { 'Content-Type': 'application/json' }
+    if (payload.action === 'login') headers['X-Admin-Token'] = token
+    const r = await fetch('/api/mutate', { method: 'POST', headers, body: JSON.stringify(payload) })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(j.error || 'حدث خطأ')
+    if (j.ok === false) {
+      if (j.conflict) throw new Error('تعارض مع: ' + j.conflicts.map(c => `${c.teacherName} (${fmtTime(c.start)}-${fmtTime(c.end)})`).join('، '))
+      throw new Error(j.error || 'حدث خطأ')
+    }
+    await fetchState()
+    return j
+  }, [fetchState, token])
+
+  const run = useCallback(async (action, payload, msg) => {
+    try {
+      await mutate({ action, ...payload })
+      if (msg) showToast(msg)
+      return true
+    } catch (e) { showToast(e.message, true); return false }
+  }, [mutate, showToast])
+
+  if (!db) return <div className="login-wrap"><div className="card"><p className="muted">جاري التحميل...</p></div></div>
+
+  if (!authed) return <LoginCard onOk={async pw => {
+    try { await mutate({ action: 'login', password: pw }); setAuthed(true); await fetchState() }
+    catch (e) { showToast(e.message, true) }
+  }} defaultPw={db.settings.defaultPassword} />
+
+  const s = db.settings
+  const open = s.openTime, close = s.closeTime
+  const rows = Math.max(1, Math.round((close - open) / 60))
+  const pending = db.bookings.filter(b => b.status === 'pending').sort((a, b) => a.createdAt - b.createdAt)
+
+  return (
+    <div className="container">
+      <div className="admin-topbar">
+        <div>
+          <h2>{s.placeName}</h2>
+          <div className="small muted">{s.placeNameEn || 'EDUCON ACADEMY'} — لوحة التحكم</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a className="btn btn-ghost btn-sm" href="/">الرئيسية</a>
+          <button className="btn btn-ghost btn-sm" onClick={() => run('logout').then(() => setAuthed(false))}>خروج</button>
+        </div>
+      </div>
+
+      <div className="tabbar">
+        {[['schedule', 'المواعيد'], ['requests', `الطلبات${pending.length ? ` (${pending.length})` : ''}`], ['halls', 'القاعات والأسعار'], ['teachers', 'المدرسون'], ['settings', 'الإعدادات']].map(([id, label]) => (
+          <button key={id} className={`tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'schedule' && <ScheduleTab db={db} open={open} close={close} rows={rows} onAdd={p => setModal({ kind: 'booking', initial: p })} onBlock={b => setModal({ kind: 'detail', booking: b })} />}
+      {tab === 'requests' && <RequestsTab db={db} run={run} waLink={waLink} />}
+      {tab === 'halls' && <HallsTab db={db} run={run} onEdit={h => setModal({ kind: 'hall', hall: h })} />}
+      {tab === 'teachers' && <TeachersTab db={db} run={run} onEdit={t => setModal({ kind: 'teacher', teacher: t })} />}
+      {tab === 'settings' && <SettingsTab db={db} run={run} token={token} />}
+
+      {modal?.kind === 'booking' && <BookingModal initial={modal.initial} db={db} open={open} close={close} editId={modal.editId} onClose={() => setModal(null)} onSave={async p => { if (await run(modal.editId ? 'updateBooking' : 'addBooking', modal.editId ? { id: modal.editId, ...p } : p, modal.editId ? 'تم التعديل' : 'تمت الإضافة')) setModal(null) }} />}
+      {modal?.kind === 'detail' && <DetailModal booking={modal.booking} db={db} onClose={() => setModal(null)} onEdit={() => { const b = modal.booking; setModal({ kind: 'booking', initial: b.type === 'single' ? { hallId: b.hallId, type: 'single', date: b.date, days: [], startDate: '', endDate: '', start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status } : { hallId: b.hallId, type: 'recurring', date: '', days: b.days, startDate: b.startDate, endDate: b.endDate, start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status }, editId: b.id }) }} onApprove={() => run('approveBooking', { id: modal.booking.id }, 'تم الاعتماد').then(() => setModal(null))} onDelete={() => { if (confirm('حذف؟')) run('deleteBooking', { id: modal.booking.id }, 'تم الحذف').then(() => setModal(null)) }} />}
+      {modal?.kind === 'hall' && <HallModal hall={modal.hall} onClose={() => setModal(null)} onSave={async p => { if (await run('updateHall', { id: modal.hall.id, ...p }, 'تم التحديث')) setModal(null) }} />}
+      {modal?.kind === 'teacher' && <TeacherModal teacher={modal.teacher} onClose={() => setModal(null)} onSave={async p => { if (await run('updateTeacher', { id: modal.teacher.id, ...p }, 'تم التحديث')) setModal(null) }} />}
+
+      {toast && <div className={`toast ${toast.err ? 'err' : ''}`}>{toast.msg}</div>}
+    </div>
+  )
+}
+
+function LoginCard({ onOk, defaultPw }) {
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="login-wrap">
+      <div className="card login-card">
+        <div className="login-icon">A</div>
+        <h2>لوحة التحكم</h2>
+        <p className="small muted">أدخل كلمة المرور للدخول</p>
+        {defaultPw && <p className="small" style={{ color: '#e11d48', fontWeight: 700 }}>الافتراضية: admin123</p>}
+        <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="كلمة المرور"
+          onKeyDown={e => { if (e.key === 'Enter' && pw) { setBusy(true); onOk(pw).finally(() => setBusy(false)) } }} />
+        <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} disabled={!pw || busy}
+          onClick={() => { setBusy(true); onOk(pw).finally(() => setBusy(false)) }}>
+          {busy ? '...' : 'دخول'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ScheduleTab({ db, open, close, rows, onAdd, onBlock }) {
+  const [weekStart, setWeekStart] = useState(() => { const d = new Date(); const off = (d.getDay() + 1) % 7; const s = new Date(d); s.setDate(s.getDate() - off); return dateStr(s) })
+  const [hallFilter, setHallFilter] = useState('all')
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
+  const today = useMemo(() => todayStr(), [])
+  const halls = hallFilter === 'all' ? db.halls : db.halls.filter(h => h.id === hallFilter)
+  const teacherMap = useMemo(() => { const m = {}; db.teachers.forEach(t => { m[t.name] = t }); return m }, [db.teachers])
+
+  function dayBodyClick(hallId, dStr, e) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const frac = (e.clientY - rect.top) / rect.height
+    const minutes = open + frac * (close - open)
+    const snap = Math.min(Math.floor(minutes / 30) * 30, close - 30)
+    onAdd({ hallId, date: dStr, start: snap, end: snap + 60 <= close ? snap + 60 : close })
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div className="week-nav">
+          <button className="btn btn-ghost btn-sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>←</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { const d = new Date(); const off = (d.getDay() + 1) % 7; const s = new Date(d); s.setDate(s.getDate() - off); setWeekStart(dateStr(s)) }}>هذا الأسبوع</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>→</button>
+        </div>
+        <button className="btn btn-primary" onClick={() => onAdd({ hallId: db.halls[0]?.id || '', type: 'single', date: today, start: open, end: Math.min(open + 60, close), days: [], startDate: today, endDate: addDays(today, 365), teacherName: '', title: '', status: 'confirmed' })}>+ إضافة موعد</button>
+      </div>
+      <div className="chip-row">
+        <button className={`chip ${hallFilter === 'all' ? 'active' : ''}`} onClick={() => setHallFilter('all')}>الكل</button>
+        {db.halls.map(h => <button key={h.id} className={`chip ${hallFilter === h.id ? 'active' : ''}`} onClick={() => setHallFilter(h.id)}>{h.name}</button>)}
+      </div>
+      {halls.length === 0 && <p className="muted">أضف قاعة أولًا من تبويب «القاعات»</p>}
+      {halls.map(hall => {
+        const dayBookings = days.map(d => bookingsForDay(db.bookings, hall.id, d))
+        return (
+          <div className="hall-sec" key={hall.id}>
+            <div className="hall-head"><span className="dot" style={{ background: hall.color }} />{hall.name}<span className="muted small"> — {hall.pricePerHour} ج/ساعة</span></div>
+            <div className="week-grid">
+              <div className="time-col">{Array.from({ length: rows }, (_, i) => <div className="hcell" key={i}>{fmtTime(open + i * 60).slice(0, 5)}</div>)}</div>
+              {days.map((d, di) => (
+                <div className="day-col" key={d}>
+                  <div className={`day-head ${d === today ? 'today' : ''}`}><div>{DAY_NAMES[weekdayOf(d)]}</div><div className="dnum">{d.slice(5)}</div></div>
+                  <div className="day-body" style={{ height: rows * HOUR_H }} onClick={e => dayBodyClick(hall.id, d, e)}>
+                    {Array.from({ length: rows - 1 }, (_, i) => <div key={i} className="hour-line" style={{ top: ((i + 1) / rows) * 100 + '%' }} />)}
+                    {dayBookings[di].map(b => {
+                      const top = ((b.start - open) / (close - open)) * 100
+                      const h = ((b.end - b.start) / (close - open)) * 100
+                      const tPhoto = teacherMap[b.teacherName]?.photo
+                      return (
+                        <div key={b.id} className={`blk ${b.status === 'pending' ? 'pending' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: blkBg(hall.color) }} onClick={e => { e.stopPropagation(); onBlock(b) }}>
+                          <div className="blk-row">{tPhoto && <img src={tPhoto} className="blk-avatar" />}<span>{b.teacherName}</span></div>
+                          {b.title && <span className="t">{b.title}</span>}
+                          <span className="t">{fmtTime(b.start)} - {fmtTime(b.end)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function RequestsTab({ db, run, waLink }) {
+  const pending = db.bookings.filter(b => b.status === 'pending').sort((a, b) => a.createdAt - b.createdAt)
+  return (
+    <div>
+      <h3 className="muted" style={{ fontSize: 15, fontWeight: 700 }}>طلبات الحجز الواردة</h3>
+      {pending.length === 0 && <p className="muted">لا توجد طلبات</p>}
+      {pending.map(b => (
+        <div className="req-card" key={b.id}>
+          <span className="req-badge">بانتظار الاعتماد</span>
+          <div className="who">
+            <h4>{b.teacherName} {b.title && <span className="muted">({b.title})</span>}</h4>
+            <div className="small muted">{b.hallName} — {DAY_NAMES[weekdayOf(b.date)]} {b.date} — {fmtTime(b.start)}-{fmtTime(b.end)}{b.phone && ` — ${b.phone}`}</div>
+          </div>
+          <button className="btn btn-ok btn-sm" onClick={() => run('approveBooking', { id: b.id }, 'تم الاعتماد')}>اعتماد</button>
+          {b.phone && <a className="btn btn-whatsapp btn-sm" target="_blank" rel="noreferrer" href={waLink(b.phone, `أهلًا ${b.teacherName}، تم استلام طلبك في ${b.hallName} يوم ${b.date} من ${fmtTime(b.start)} إلى ${fmtTime(b.end)}`)}>واتساب</a>}
+          <button className="btn btn-danger btn-sm" onClick={() => { if (confirm('حذف؟')) run('deleteBooking', { id: b.id }, 'تم الحذف') }}>حذف</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
+  const [f, setF] = useState({ ...initial })
+  const [busy, setBusy] = useState(false)
+  const set = k => e => setF({ ...f, [k]: e.target.value })
+  const hours = timeOptions(open, close, 30)
+
+  function submit() {
+    if (!f.hallId) return alert('اختر القاعة')
+    if (f.type === 'recurring' && (!f.days || !f.days.length)) return alert('اختر الأيام')
+    if (f.end <= f.start) return alert('وقت النهاية بعد البداية')
+    if (!f.teacherName?.trim()) return alert('اسم المدرس')
+    setBusy(true)
+    const p = { hallId: f.hallId, type: f.type, start: Number(f.start), end: Number(f.end), teacherName: f.teacherName.trim(), title: (f.title || '').trim(), status: f.status || 'confirmed', phone: f.phone || '' }
+    if (f.type === 'single') p.date = f.date
+    else { p.days = f.days; p.startDate = f.startDate; p.endDate = f.endDate }
+    onSave(p).finally(() => setBusy(false))
+  }
+
+  function pickTeacher(id) {
+    const t = db.teachers.find(x => x.id === id)
+    if (t) setF({ ...f, teacherName: t.name, phone: t.phone || '' })
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="modal">
+        <h3>{editId ? 'تعديل الموعد' : 'موعد جديد'}</h3>
+        <div className="form-grid">
+          {field('القاعة', <select value={f.hallId} onChange={set('hallId')}><option value="">اختر</option>{db.halls.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}</select>, 'h')}
+          {field('النوع', <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })}><option value="single">يوم واحد</option><option value="recurring"> التعاقد الدوري</option></select>, 't')}
+        </div>
+        {f.type === 'single' ? field('التاريخ', <input type="date" value={f.date} onChange={set('date')} />, 'd') : (
+          <>
+            <div className="field"><span className="label">الأيام</span><div className="checkbox-row">{DAY_NAMES.map((n, i) => <label key={i}><input type="checkbox" checked={f.days?.includes(i)} onChange={e => setF({ ...f, days: e.target.checked ? [...(f.days || []), i] : (f.days || []).filter(d => d !== i) })} />{n}</label>)}</div></div>
+            <div className="form-grid">{field('من', <input type="date" value={f.startDate} onChange={set('startDate')} />, 'sd')}{field('إلى', <input type="date" value={f.endDate} onChange={set('endDate')} />, 'ed')}</div>
+          </>
+        )}
+        <div className="form-grid">
+          {field('من الساعة', <select value={f.start} onChange={set('start')}>{hours.filter(m => m < close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 's')}
+          {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'e')}
+        </div>
+        <div className="form-grid">
+          {field('المدرس', <select value="" onChange={e => pickTeacher(e.target.value)}><option value="">اختر مدرسًا...</option>{db.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>, 'tt')}
+          {field('المادة (اختياري)', <input value={f.title || ''} onChange={set('title')} placeholder="مثال: رياضيات" />, 'ti')}
+        </div>
+        {field('اسم المدرس', <input value={f.teacherName || ''} onChange={set('tn')} placeholder="الاسم" />, 'tn2')}
+        <div className="modal-foot">
+          <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+          <button className="btn btn-primary" disabled={busy} onClick={submit}>{busy ? '...' : 'حفظ'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
+  const hall = db.halls.find(h => h.id === b.hallId)
+  const isRec = b.type === 'recurring'
+  const daysTxt = isRec ? b.days.map(d => DAY_NAMES[d]).join('، ') : DAY_NAMES[weekdayOf(b.date)]
+  const dateTxt = isRec ? `${b.startDate} حتى ${b.endDate}` : b.date
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="modal">
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span className="dot" style={{ background: hall?.color }} />{b.teacherName}{b.status === 'pending' && <span className="req-badge">بانتظار</span>}</h3>
+        <p className="muted" style={{ marginTop: 0 }}>{b.hallName} — {daysTxt} ({dateTxt}) — {fmtTime(b.start)}-{fmtTime(b.end)}{isRec && <span className="small block">تكرار أسبوعي</span>}</p>
+        {b.title && <p><b>المادة:</b> {b.title}</p>}
+        {b.phone && <p dir="ltr" style={{ textAlign: 'right' }}><b>الهاتف:</b> {b.phone}</p>}
+        <div className="modal-foot">
+          {b.status === 'pending' && <button className="btn btn-ok" onClick={onApprove}>اعتماد</button>}
+          {b.phone && b.status === 'confirmed' && <a className="btn btn-whatsapp" target="_blank" rel="noreferrer" href={waLink(b.phone, `تأكيد موعد ${b.hallName}: ${daysTxt} ${fmtTime(b.start)}-${fmtTime(b.end)}`)}>واتساب</a>}
+          <button className="btn btn-ghost" onClick={onEdit}>تعديل</button>
+          <button className="btn btn-danger" onClick={onDelete}>حذف</button>
+          <button className="btn btn-ghost" onClick={onClose}>إغلاق</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HallsTab({ db, run, onEdit }) {
+  const [name, setName] = useState('')
+  const [price, setPrice] = useState('')
+  async function add() {
+    if (!name.trim()) return alert('اسم القاعة')
+    if (!(Number(price) >= 0)) return alert('السعر')
+    if (await run('addHall', { name, pricePerHour: Number(price) }, 'تمت الإضافة')) { setName(''); setPrice('') }
+  }
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3 style={{ marginTop: 0 }}>إضافة قاعة</h3>
+        <div className="form-grid">
+          <div className="field"><span className="label">اسم القاعة</span><input value={name} onChange={e => setName(e.target.value)} placeholder="مثال: Hall 1" /></div>
+          <div className="field"><span className="label">سعر الساعة (جنيه)</span><input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></div>
+        </div>
+        <button className="btn btn-primary" onClick={add}>إضافة</button>
+      </div>
+      {db.halls.map(h => (
+        <div className="card hall-card" key={h.id}>
+          <span className="dot" style={{ background: h.color }} />
+          <strong>{h.name}</strong>
+          <span className="muted small">{h.pricePerHour} ج/ساعة</span>
+          <span style={{ flex: 1 }} />
+          <button className="btn btn-ghost btn-sm" onClick={() => onEdit(h)}>تعديل</button>
+          <button className="btn btn-danger btn-sm" onClick={() => { if (confirm(`حذف "${h.name}"؟`)) run('deleteHall', { id: h.id }, 'تم الحذف') }}>حذف</button>
+        </div>
+      ))}
+      {db.halls.length === 0 && <p className="muted">لا توجد قاعات</p>}
+    </div>
+  )
+}
+
+function HallModal({ hall, onClose, onSave }) {
+  const [name, setName] = useState(hall.name)
+  const [price, setPrice] = useState(hall.pricePerHour)
+  const [color, setColor] = useState(hall.color)
+  const palette = ['#e11d48', '#f43f5e', '#fb7185', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#8b5cf6', '#a855f7', '#ec4899', '#6366f1']
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="modal">
+        <h3>تعديل القاعة</h3>
+        <div className="form-grid">
+          <div className="field"><span className="label">الاسم</span><input value={name} onChange={e => setName(e.target.value)} /></div>
+          <div className="field"><span className="label">السعر</span><input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></div>
+        </div>
+        <div className="field"><span className="label">اللون</span><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{palette.map(c => <button key={c} onClick={() => setColor(c)} style={{ width: 32, height: 32, borderRadius: 8, border: color === c ? '3px solid #111' : 'none', background: c }} />)}</div></div>
+        <div className="modal-foot">
+          <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+          <button className="btn btn-primary" onClick={() => onSave({ name: name.trim(), pricePerHour: Number(price), color })}>حفظ</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TeachersTab({ db, run, onEdit }) {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [photo, setPhoto] = useState('')
+  const fileRef = useRef()
+  async function handlePhoto(e) {
+    const file = e.target.files[0]
+    if (file) { const d = await resizeImage(file); setPhoto(d) }
+  }
+  async function add() {
+    if (!name.trim()) return alert('اسم المدرس')
+    if (await run('addTeacher', { name: name.trim(), phone: phone.trim(), photo }, 'تمت الإضافة')) { setName(''); setPhone(''); setPhoto(''); if (fileRef.current) fileRef.current.value = '' }
+  }
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3 style={{ marginTop: 0 }}>إضافة مدرس</h3>
+        <div className="form-grid">
+          <div className="field"><span className="label">الاسم</span><input value={name} onChange={e => setName(e.target.value)} /></div>
+          <div className="field"><span className="label">الهاتف</span><input dir="ltr" value={phone} onChange={e => setPhone(e.target.value)} placeholder="01x..." /></div>
+        </div>
+        <div className="form-grid">
+          <div className="field"><span className="label">صورة المدرس</span><input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} /><input style={{ marginTop: 6 }} value={photo} onChange={e => setPhoto(e.target.value)} placeholder="أو الصق رابط الصورة" /></div>
+          {photo && <div style={{ display: 'flex', alignItems: 'flex-end' }}><img src={photo} style={{ width: 70, height: 70, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--line)' }} /></div>}
+        </div>
+        <button className="btn btn-primary" onClick={add}>إضافة</button>
+      </div>
+      {db.teachers.map(t => (
+        <div className="card hall-card" key={t.id}>
+          {t.photo ? <img src={t.photo} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} /> : <span className="dot" style={{ background: '#94a3b8' }} />}
+          <strong>{t.name}</strong>
+          {t.phone && <span className="muted small" dir="ltr">{t.phone}</span>}
+          <span style={{ flex: 1 }} />
+          <button className="btn btn-ghost btn-sm" onClick={() => onEdit(t)}>تعديل</button>
+          <button className="btn btn-danger btn-sm" onClick={() => { if (confirm(`حذف "${t.name}"؟`)) run('deleteTeacher', { id: t.id }, 'تم الحذف') }}>حذف</button>
+        </div>
+      ))}
+      {db.teachers.length === 0 && <p className="muted">لا يوجد مدرسون</p>}
+    </div>
+  )
+}
+
+function TeacherModal({ teacher, onClose, onSave }) {
+  const [name, setName] = useState(teacher.name)
+  const [phone, setPhone] = useState(teacher.phone || '')
+  const [photo, setPhoto] = useState(teacher.photo || '')
+  const fileRef = useRef()
+  async function handlePhoto(e) {
+    const file = e.target.files[0]
+    if (file) { const d = await resizeImage(file); setPhoto(d) }
+  }
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="modal">
+        <h3>تعديل المدرس</h3>
+        <div className="form-grid">
+          <div className="field"><span className="label">الاسم</span><input value={name} onChange={e => setName(e.target.value)} /></div>
+          <div className="field"><span className="label">الهاتف</span><input dir="ltr" value={phone} onChange={e => setPhone(e.target.value)} /></div>
+        </div>
+        <div className="form-grid">
+          <div className="field"><span className="label">الصورة</span><input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} /><input style={{ marginTop: 6 }} value={photo} onChange={e => setPhoto(e.target.value)} placeholder="رابط الصورة" /></div>
+          {photo && <div style={{ display: 'flex', alignItems: 'flex-end' }}><img src={photo} style={{ width: 70, height: 70, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--line)' }} /></div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+          <button className="btn btn-primary" onClick={() => onSave({ name: name.trim(), phone: phone.trim(), photo })}>حفظ</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SettingsTab({ db, run, token }) {
+  const s = db.settings
+  const [placeName, setPlaceName] = useState(s.placeName)
+  const [placeNameEn, setPlaceNameEn] = useState(s.placeNameEn || '')
+  const [openT, setOpenT] = useState(s.openTime)
+  const [closeT, setCloseT] = useState(s.closeTime)
+  const [refresh, setRefresh] = useState(s.displayRefresh)
+  const [pw1, setPw1] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [origin, setOrigin] = useState('')
+  useEffect(() => { setOrigin(window.location.origin) }, [])
+  const hours = timeOptions(0, 24 * 60 - 30, 30)
+
+  async function save() {
+    if (Number(closeT) <= Number(openT)) return alert('ساعات العمل غير صحيحة')
+    if (pw1 && pw1 !== pw2) return alert('كلمتا المرور غير متطابقتين')
+    const p = { placeName, placeNameEn, openTime: Number(openT), closeTime: Number(closeT), displayRefresh: Number(refresh) }
+    if (pw1) p.newPassword = pw1
+    if (await run('updateSettings', p, 'تم الحفظ')) { setPw1(''); setPw2('') }
+  }
+
+  const adminUrl = `${origin}/manage/${token}`
+  const bookingUrl = `${origin}/book/${s.bookingToken || ''}`
+
+  return (
+    <div className="settings-grid">
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>المعلومات</h3>
+        <div className="field"><span className="label">اسم المكان (عربي)</span><input value={placeName} onChange={e => setPlaceName(e.target.value)} /></div>
+        <div className="field"><span className="label">اسم المكان (إنجليزي)</span><input value={placeNameEn} onChange={e => setPlaceNameEn(e.target.value)} placeholder="EDUCON ACADEMY" /></div>
+        <div className="form-grid">
+          <div className="field"><span className="label">بداية العمل</span><select value={openT} onChange={e => setOpenT(e.target.value)}>{hours.filter(m => m < Number(closeT)).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+          <div className="field"><span className="label">نهاية العمل</span><select value={closeT} onChange={e => setCloseT(e.target.value)}>{hours.filter(m => m > Number(openT)).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+        </div>
+        <div className="field"><span className="label">تحديث الشاشة (ثانية)</span><input type="number" min="10" value={refresh} onChange={e => setRefresh(e.target.value)} /></div>
+        <div className="form-grid">
+          <div className="field"><span className="label">كلمة مرور جديدة</span><input type="password" value={pw1} onChange={e => setPw1(e.target.value)} /></div>
+          <div className="field"><span className="label">تأكيد</span><input type="password" value={pw2} onChange={e => setPw2(e.target.value)} /></div>
+        </div>
+        <button className="btn btn-primary" onClick={save}>حفظ</button>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>روابط الوصول</h3>
+        <p className="small muted" style={{ marginTop: 0 }}>هذه الروابط سرية — لا تشاركها إلا مع المسؤولين</p>
+        <div className="field">
+          <span className="label">لوحة التحكم</span>
+          <div className="url-row"><input readOnly value={adminUrl} onFocus={e => e.target.select()} /><button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(adminUrl); alert('تم النسخ') }}>نسخ</button></div>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, color: '#e11d48' }} onClick={() => { if (confirm('إعادة توليد الرابط؟')) run('updateSettings', { regenerateAdminToken: true }, 'تم التحديث — استخدم الرابط الجديد') }}>إعادة توليد الرابط</button>
+        </div>
+        <div className="field">
+          <span className="label">رابط الحجز الخارجي</span>
+          <div className="url-row"><input readOnly value={bookingUrl} onFocus={e => e.target.select()} /><button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(bookingUrl); alert('تم النسخ') }}>نسخ</button></div>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, color: '#e11d48' }} onClick={() => { if (confirm('إعادة توليد الرابط؟')) run('updateSettings', { regenerateBookingToken: true }, 'تم التحديث') }}>إعادة توليد الرابط</button>
+        </div>
+        <p className="small muted">ضع رابط الحجز في المنشورات وأرسله للمدرسين، وافتح شاشة العرض على الشاشة الثابتة.</p>
+      </div>
+    </div>
+  )
+}
