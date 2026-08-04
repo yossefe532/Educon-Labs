@@ -209,3 +209,8 @@ input:focus, select:focus { border-color: var(--primary); }
 @keyframes tickerMove { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 @media (max-width: 700px) { .modal { padding: 14px; } .form-grid { grid-template-columns: 1fr; } .settings-grid { grid-template-columns: 1fr; } }
+
+/* NOTIFICATIONS */
+.notif-bell { position: relative; }
+.notif-bell.active { animation: bellRing 0.5s ease; }
+@keyframes bellRing { 0%,100% { transform: rotate(0); } 20%,60% { transform: rotate(12deg); } 40%,80% { transform: rotate(-12deg); } }

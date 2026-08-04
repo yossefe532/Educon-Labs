@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  DAY_NAMES, fmtTime, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr
+  DAY_NAMES, fmtTime, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr, bookingTimeRange, arabicDate
 } from '@/lib/time'
 
 const HOUR_H = 46
@@ -49,6 +49,9 @@ export default function Admin({ token }) {
   const [tab, setTab] = useState('schedule')
   const [toast, setToast] = useState(null)
   const [modal, setModal] = useState(null)
+  const [notifSupported, setNotifSupported] = useState(false)
+  const [notifSubscribed, setNotifSubscribed] = useState(false)
+  const [notifPerm, setNotifPerm] = useState('default')
 
   const showToast = useCallback((msg, err) => {
     setToast({ msg, err })
@@ -68,6 +71,17 @@ export default function Admin({ token }) {
       fetchState()
     }).catch(() => fetchState())
   }, [fetchState])
+
+  useEffect(() => {
+    if (!authed || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    setNotifSupported(true)
+    setNotifPerm(Notification.permission)
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      reg.pushManager.getSubscription().then(sub => {
+        setNotifSubscribed(!!sub)
+      })
+    }).catch(() => {})
+  }, [authed])
 
   const mutate = useCallback(async (payload) => {
     const headers = { 'Content-Type': 'application/json' }
@@ -91,6 +105,42 @@ export default function Admin({ token }) {
     } catch (e) { showToast(e.message, true); return false }
   }, [mutate, showToast])
 
+  const toggleNotif = useCallback(async () => {
+    if (!notifSupported) return
+    try {
+      const reg = await navigator.serviceWorker.ready
+      if (notifSubscribed) {
+        const sub = await reg.pushManager.getSubscription()
+        if (sub) {
+          await fetch('/api/push/subscribe', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) })
+          await sub.unsubscribe()
+          setNotifSubscribed(false)
+          showToast('تم إيقاف الاشعارات')
+        }
+      } else {
+        const perm = await Notification.requestPermission()
+        setNotifPerm(perm)
+        if (perm !== 'granted') { showToast('تم رفض الاذن', true); return }
+        const vkRes = await fetch('/api/push/vapid-key')
+        const vk = await vkRes.json()
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vk.publicKey
+        })
+        const subObj = sub.toJSON()
+        await fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: { endpoint: subObj.endpoint, keys: subObj.keys }, role: 'admin' })
+        })
+        setNotifSubscribed(true)
+        showToast('تم تفعيل الاشعارات')
+      }
+    } catch (e) {
+      showToast('حدث خطأ: ' + e.message, true)
+    }
+  }, [notifSupported, notifSubscribed, showToast])
+
   if (!db) return <div className="login-wrap"><div className="card"><p className="muted">جاري التحميل...</p></div></div>
 
   if (!authed) return <LoginCard onOk={async pw => {
@@ -110,7 +160,12 @@ export default function Admin({ token }) {
           <h2>{s.placeName}</h2>
           <div className="small muted">{s.placeNameEn || 'EDUCON ACADEMY'} — لوحة التحكم</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {notifSupported && (
+            <button className={`btn btn-sm ${notifSubscribed ? 'btn-ok' : 'btn-ghost'}`} onClick={toggleNotif} title={notifSubscribed ? 'إيقاف الاشعارات' : 'تفعيل الاشعارات'}>
+              {notifSubscribed ? '🔔' : '🔕'}
+            </button>
+          )}
           <a className="btn btn-ghost btn-sm" href="/">الرئيسية</a>
           <button className="btn btn-ghost btn-sm" onClick={() => run('logout').then(() => setAuthed(false))}>خروج</button>
         </div>
@@ -211,14 +266,16 @@ function ScheduleTab({ db, open, close, rows, onAdd, onBlock }) {
                   <div className="day-body" style={{ height: rows * HOUR_H }} onClick={e => dayBodyClick(hall.id, d, e)}>
                     {Array.from({ length: rows - 1 }, (_, i) => <div key={i} className="hour-line" style={{ top: ((i + 1) / rows) * 100 + '%' }} />)}
                     {dayBookings[di].map(b => {
-                      const top = ((b.start - open) / (close - open)) * 100
-                      const h = ((b.end - b.start) / (close - open)) * 100
+                      const tr = bookingTimeRange(b, d)
+                      if (!tr) return null
+                      const top = ((tr.start - open) / (close - open)) * 100
+                      const h = ((tr.end - tr.start) / (close - open)) * 100
                       const tPhoto = teacherMap[b.teacherName]?.photo
                       return (
                         <div key={b.id} className={`blk ${b.status === 'pending' ? 'pending' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: blkBg(hall.color) }} onClick={e => { e.stopPropagation(); onBlock(b) }}>
                           <div className="blk-row">{tPhoto && <img src={tPhoto} className="blk-avatar" />}<span>{b.teacherName}</span></div>
                           {b.title && <span className="t">{b.title}</span>}
-                          <span className="t">{fmtTime(b.start)} - {fmtTime(b.end)}</span>
+                          <span className="t">{fmtTime(tr.start)} - {fmtTime(tr.end)}</span>
                         </div>
                       )
                     })}
@@ -235,6 +292,24 @@ function ScheduleTab({ db, open, close, rows, onAdd, onBlock }) {
 
 function RequestsTab({ db, run, waLink }) {
   const pending = db.bookings.filter(b => b.status === 'pending').sort((a, b) => a.createdAt - b.createdAt)
+  const old = db.bookings.filter(b => b.status === 'rejected' && b.rejectReason && (b.rejectReason === 'timeout' || b.rejectReason === 'expired')).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 5)
+
+  function bookingSummary(b) {
+    if (b.type === 'multi') return `${b.hallName} — ${b.slots?.length || 0} أيام`
+    if (b.type === 'recurring') return `${b.hallName} — ${b.days?.map(d => DAY_NAMES[d]).join('، ')} — ${fmtTime(b.start)}-${fmtTime(b.end)}`
+    return `${b.hallName} — ${DAY_NAMES[weekdayOf(b.date)]} ${b.date} — ${fmtTime(b.start)}-${fmtTime(b.end)}`
+  }
+
+  function bookingDetails(b) {
+    if (b.type === 'multi' && b.slots) {
+      return b.slots.map(s => `${arabicDate(s.date)} ${fmtTime(s.start)}-${fmtTime(s.end)}`).join('، ')
+    }
+    if (b.type === 'recurring') {
+      return `${b.startDate} حتى ${b.endDate}`
+    }
+    return `${b.phone || ''}`
+  }
+
   return (
     <div>
       <h3 className="muted" style={{ fontSize: 15, fontWeight: 700 }}>طلبات الحجز الواردة</h3>
@@ -244,13 +319,31 @@ function RequestsTab({ db, run, waLink }) {
           <span className="req-badge">بانتظار الاعتماد</span>
           <div className="who">
             <h4>{b.teacherName} {b.title && <span className="muted">({b.title})</span>}</h4>
-            <div className="small muted">{b.hallName} — {DAY_NAMES[weekdayOf(b.date)]} {b.date} — {fmtTime(b.start)}-{fmtTime(b.end)}{b.phone && ` — ${b.phone}`}</div>
+            <div className="small muted">{bookingSummary(b)}</div>
+            {b.type === 'multi' && <div className="small muted">{bookingDetails(b)}</div>}
+            {b.phone && <div className="small muted" dir="ltr">{b.phone}</div>}
           </div>
           <button className="btn btn-ok btn-sm" onClick={() => run('approveBooking', { id: b.id }, 'تم الاعتماد')}>اعتماد</button>
-          {b.phone && <a className="btn btn-whatsapp btn-sm" target="_blank" rel="noreferrer" href={waLink(b.phone, `أهلًا ${b.teacherName}، تم استلام طلبك في ${b.hallName} يوم ${b.date} من ${fmtTime(b.start)} إلى ${fmtTime(b.end)}`)}>واتساب</a>}
+          {b.phone && <a className="btn btn-whatsapp btn-sm" target="_blank" rel="noreferrer" href={waLink(b.phone, `أهلًا ${b.teacherName}، تم اعتماد حجزك في ${b.hallName}`)}>واتساب</a>}
           <button className="btn btn-danger btn-sm" onClick={() => { if (confirm('حذف؟')) run('deleteBooking', { id: b.id }, 'تم الحذف') }}>حذف</button>
         </div>
       ))}
+      {old.length > 0 && (
+        <>
+          <h3 className="muted" style={{ fontSize: 13, fontWeight: 700, marginTop: 20 }}>طلبات مرفوضة تلقائيًا (أكتر من يومين / تاريخ منتهي)</h3>
+          {old.map(b => (
+            <div className="req-card" key={b.id} style={{ opacity: 0.6 }}>
+              <span className="req-badge" style={{ background: '#fee2e2', color: '#991b1b' }}>{b.rejectReason === 'expired' ? 'تاريخ منتهي' : 'أكتر من يومين'}</span>
+              <div className="who">
+                <h4>{b.teacherName}</h4>
+                <div className="small muted">{bookingSummary(b)}</div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => { if (confirm('إعادة الطلب؟')) run('updateBooking', { id: b.id, status: 'pending' }, 'تمت إعادة الطلب') }}>إعادة</button>
+              <button className="btn btn-danger btn-sm" onClick={() => { if (confirm('حذف؟')) run('deleteBooking', { id: b.id }, 'تم الحذف') }}>حذف</button>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }
@@ -313,18 +406,19 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
 function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
   const hall = db.halls.find(h => h.id === b.hallId)
   const isRec = b.type === 'recurring'
-  const daysTxt = isRec ? b.days.map(d => DAY_NAMES[d]).join('، ') : DAY_NAMES[weekdayOf(b.date)]
-  const dateTxt = isRec ? `${b.startDate} حتى ${b.endDate}` : b.date
+  const isMulti = b.type === 'multi'
+  const daysTxt = isRec ? b.days.map(d => DAY_NAMES[d]).join('، ') : isMulti ? `${b.slots?.length || 0} أيام` : DAY_NAMES[weekdayOf(b.date)]
+  const dateTxt = isRec ? `${b.startDate} حتى ${b.endDate}` : isMulti ? (b.slots || []).map(s => `${arabicDate(s.date)} ${fmtTime(s.start)}-${fmtTime(s.end)}`).join('، ') : b.date
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span className="dot" style={{ background: hall?.color }} />{b.teacherName}{b.status === 'pending' && <span className="req-badge">بانتظار</span>}</h3>
-        <p className="muted" style={{ marginTop: 0 }}>{b.hallName} — {daysTxt} ({dateTxt}) — {fmtTime(b.start)}-{fmtTime(b.end)}{isRec && <span className="small block">تكرار أسبوعي</span>}</p>
+        <p className="muted" style={{ marginTop: 0 }}>{b.hallName} — {daysTxt} ({dateTxt}) — {isRec || isMulti ? '' : `${fmtTime(b.start)}-${fmtTime(b.end)}`}{isRec && <span className="small block">تكرار أسبوعي</span>}{isMulti && <span className="small block">مواعيد متعددة</span>}</p>
         {b.title && <p><b>المادة:</b> {b.title}</p>}
         {b.phone && <p dir="ltr" style={{ textAlign: 'right' }}><b>الهاتف:</b> {b.phone}</p>}
         <div className="modal-foot">
           {b.status === 'pending' && <button className="btn btn-ok" onClick={onApprove}>اعتماد</button>}
-          {b.phone && b.status === 'confirmed' && <a className="btn btn-whatsapp" target="_blank" rel="noreferrer" href={waLink(b.phone, `تأكيد موعد ${b.hallName}: ${daysTxt} ${fmtTime(b.start)}-${fmtTime(b.end)}`)}>واتساب</a>}
+          {b.phone && b.status === 'confirmed' && <a className="btn btn-whatsapp" target="_blank" rel="noreferrer" href={waLink(b.phone, `تأكيد موعد ${b.hallName}: ${daysTxt}`)}>واتساب</a>}
           <button className="btn btn-ghost" onClick={onEdit}>تعديل</button>
           <button className="btn btn-danger" onClick={onDelete}>حذف</button>
           <button className="btn btn-ghost" onClick={onClose}>إغلاق</button>

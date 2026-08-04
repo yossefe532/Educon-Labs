@@ -3,7 +3,8 @@ import { cookies } from 'next/headers'
 import { loadDB, saveDB, withLock, defaultDB } from '@/lib/storage'
 import { checkSession, makeSessionToken } from '@/lib/auth'
 import crypto from 'crypto'
-import { uid, findConflicts, HALL_COLORS, toMin } from '@/lib/time'
+import { uid, findConflicts, HALL_COLORS, toMin, fmtTime, isPendingOld, isBookingDatePast } from '@/lib/time'
+import { notifyAdmin, notifyTeacher, cleanupExpiredSubscriptions } from '@/lib/notifications'
 
 const genToken = (suffix) => crypto.createHash('sha256').update((process.env.APP_SECRET || 'educon-academy-2026') + '::' + (suffix || '')).digest('hex').slice(0, 32)
 
@@ -15,7 +16,41 @@ function bad(msg) {
 
 function validateBookingFields(body) {
   const type = body.type
-  if (type !== 'single' && type !== 'recurring') return { error: 'نوع الحجز غير صحيح' }
+  if (type !== 'single' && type !== 'recurring' && type !== 'multi') return { error: 'نوع الحجز غير صحيح' }
+
+  let b = {
+    type,
+    hallId: body.hallId,
+    teacherName: String(body.teacherName || '').trim(),
+    title: String(body.title || '').trim(),
+    phone: String(body.phone || '').trim()
+  }
+  if (!b.hallId || !b.teacherName) return { error: 'يجب اختيار القاعة واسم المدرس' }
+
+  if (type === 'multi') {
+    const slots = Array.isArray(body.slots) ? body.slots : []
+    if (!slots.length) return { error: 'اختر يومًا واحدًا على الأقل' }
+    const open = Number(body.openTime)
+    const close = Number(body.closeTime)
+    const validSlots = []
+    for (const sl of slots) {
+      let st = Number(sl.start)
+      let en = Number(sl.end)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(sl.date || '')) return { error: 'تاريخ غير صحيح' }
+      if (!Number.isFinite(st) || !Number.isFinite(en) || st >= en) return { error: 'الوقت غير صحيح' }
+      if (Number.isFinite(open) && Number.isFinite(close)) {
+        if (st < open || en > close) return { error: `${sl.date}: الوقت خارج ساعات العمل` }
+        if (st % 30 !== 0 || en % 30 !== 0) return { error: `${sl.date}: الوقت يجب أن يكون بنصف ساعة` }
+      }
+      validSlots.push({ date: sl.date, start: st, end: en })
+    }
+    validSlots.sort((a, c) => a.date.localeCompare(c.date) || a.start - c.start)
+    b.slots = validSlots
+    b.start = Math.min(...validSlots.map(s => s.start))
+    b.end = Math.max(...validSlots.map(s => s.end))
+    return { value: b }
+  }
+
   let start = Number(body.start)
   let end = Number(body.end)
   if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return { error: 'الوقت غير صحيح' }
@@ -25,14 +60,9 @@ function validateBookingFields(body) {
     if (start < open || end > close) return { error: 'الوقت خارج ساعات العمل' }
     if (start % 30 !== 0 || end % 30 !== 0) return { error: 'الوقت يجب أن يكون بنصف ساعة' }
   }
-  let b = {
-    type, start, end,
-    hallId: body.hallId,
-    teacherName: String(body.teacherName || '').trim(),
-    title: String(body.title || '').trim(),
-    phone: String(body.phone || '').trim()
-  }
-  if (!b.hallId || !b.teacherName) return { error: 'يجب اختيار القاعة واسم المدرس' }
+  b.start = start
+  b.end = end
+
   if (type === 'single') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) return { error: 'تاريخ غير صحيح' }
     b.date = body.date
@@ -84,12 +114,34 @@ export async function POST(request) {
       const cur = await loadDB()
       const hall = cur.halls.find(h => h.id === body.hallId)
       if (!hall) return bad('القاعة غير موجودة')
-      const v = validateBookingFields({
-        type: 'single', hallId: body.hallId, date: body.date,
-        start: toMin(body.start), end: toMin(body.end),
-        teacherName: body.teacherName, title: body.title, phone: body.phone,
-        openTime: cur.settings.openTime, closeTime: cur.settings.closeTime
-      })
+
+      const bookingType = body.type || 'single'
+      let v
+      if (bookingType === 'multi') {
+        const slots = Array.isArray(body.slots) ? body.slots.map(s => ({
+          date: s.date, start: toMin(s.start), end: toMin(s.end)
+        })) : []
+        v = validateBookingFields({
+          type: 'multi', hallId: body.hallId, slots,
+          teacherName: body.teacherName, title: body.title, phone: body.phone,
+          openTime: cur.settings.openTime, closeTime: cur.settings.closeTime
+        })
+      } else if (bookingType === 'recurring') {
+        v = validateBookingFields({
+          type: 'recurring', hallId: body.hallId,
+          days: body.days, startDate: body.startDate, endDate: body.endDate,
+          start: toMin(body.start), end: toMin(body.end),
+          teacherName: body.teacherName, title: body.title, phone: body.phone,
+          openTime: cur.settings.openTime, closeTime: cur.settings.closeTime
+        })
+      } else {
+        v = validateBookingFields({
+          type: 'single', hallId: body.hallId, date: body.date,
+          start: toMin(body.start), end: toMin(body.end),
+          teacherName: body.teacherName, title: body.title, phone: body.phone,
+          openTime: cur.settings.openTime, closeTime: cur.settings.closeTime
+        })
+      }
       if (v.error) return bad(v.error)
       if (!/^\d{10,15}$/.test(String(body.phone || '').replace(/\D/g, ''))) return bad('رقم التواصل غير صحيح')
       const b = { ...v.value, id: uid(), hallName: hall.name, status: 'pending', source: 'public', createdAt: Date.now() }
@@ -208,6 +260,9 @@ export async function POST(request) {
         if (!b) return bad('الطلب غير موجود')
         b.status = 'confirmed'
         await saveDB(cur)
+        notifyTeacher(cur, b.teacherName, 'تم اعتماد حجزك ✅', `حجزك في ${b.hallName} يوم ${b.date} من ${fmtTime(b.start)} إلى ${fmtTime(b.end)} تم اعتماده`, `/book`).then(results => {
+          loadDB().then(d => { cleanupExpiredSubscriptions(d, results); saveDB(d) })
+        }).catch(() => {})
         return NextResponse.json({ ok: true })
       }
       case 'updateSettings': {
