@@ -5,6 +5,8 @@ import { checkSession, makeSessionToken } from '@/lib/auth'
 import crypto from 'crypto'
 import { uid, findConflicts, HALL_COLORS, toMin } from '@/lib/time'
 
+const genToken = (suffix) => crypto.createHash('sha256').update((process.env.APP_SECRET || 'educon-academy-2026') + '::' + (suffix || '')).digest('hex').slice(0, 32)
+
 export const dynamic = 'force-dynamic'
 
 function bad(msg) {
@@ -209,8 +211,16 @@ export async function POST(request) {
           if (String(body.newPassword).length < 4) return bad('كلمة المرور قصيرة جدًا')
           s.adminPassword = String(body.newPassword)
         }
-        if (body.regenerateAdminToken) s.adminToken = crypto.randomBytes(16).toString('hex')
-        if (body.regenerateBookingToken) s.bookingToken = crypto.randomBytes(16).toString('hex')
+        if (body.regenerateAdminToken) {
+          const version = (cur.settings._adminTokenVersion || 0) + 1
+          cur.settings._adminTokenVersion = version
+          s.adminToken = genToken('admin-v' + version)
+        }
+        if (body.regenerateBookingToken) {
+          const version = (cur.settings._bookingTokenVersion || 0) + 1
+          cur.settings._bookingTokenVersion = version
+          s.bookingToken = genToken('booking-v' + version)
+        }
         await saveDB(cur)
         return NextResponse.json({ ok: true })
       }

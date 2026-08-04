@@ -116,6 +116,14 @@ export default function Admin({ token }) {
         </div>
       </div>
 
+      {s.storageMode !== 'redis' && (
+        <div className="card" style={{ background: '#fef2f2', border: '1px solid #fca5a5', marginBottom: 12 }}>
+          <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>
+            <strong>تنبيه:</strong> البيانات محفوظة في الذاكرة فقط. سيتم حذف جميع الحجوزات والبيانات عند كل تحديث أو إعادة تشغيل للسيرفر. يجب إعداد Vercel KV لحفظ البيانات بشكل دائم.
+          </p>
+        </div>
+      )}
+
       <div className="tabbar">
         {[['schedule', 'المواعيد'], ['requests', `الطلبات${pending.length ? ` (${pending.length})` : ''}`], ['halls', 'القاعات والأسعار'], ['teachers', 'المدرسون'], ['settings', 'الإعدادات']].map(([id, label]) => (
           <button key={id} className={`tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>

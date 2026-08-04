@@ -5,11 +5,18 @@ export const dynamic = 'force-dynamic'
 
 export default async function Home() {
   const db = await loadDB()
-  const { placeName, placeNameEn, adminToken, bookingToken, openTime, closeTime } = db.settings
+  const { placeName, placeNameEn, adminToken, bookingToken, openTime, closeTime, storageMode } = db.settings
   const halls = db.halls || []
 
   return (
     <div className="container">
+      {storageMode !== 'redis' && (
+        <div className="card" style={{ background: '#fef2f2', border: '1px solid #fca5a5', marginBottom: 12 }}>
+          <p style={{ margin: 0, color: '#991b1b', fontSize: 13 }}>
+            <strong>تنبيه:</strong> البيانات غير محفوظة بشكل دائم. يجب إعداد Vercel KV.
+          </p>
+        </div>
+      )}
       <div className="home-hero">
         <h1>{placeName || 'اكاديمية ايديكون للتدريب'}</h1>
         <div className="en">{placeNameEn || 'EDUCON ACADEMY'}</div>
