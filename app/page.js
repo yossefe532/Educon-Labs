@@ -1,11 +1,10 @@
 import { loadDB } from '@/lib/storage'
-import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
 export default async function Home() {
   const db = await loadDB()
-  const { placeName, placeNameEn, adminToken, openTime, closeTime, storageMode } = db.settings
+  const { placeName, placeNameEn, openTime, closeTime, storageMode } = db.settings
   const halls = db.halls || []
 
   return (
@@ -29,16 +28,11 @@ export default async function Home() {
           <h3>شاشة العرض</h3>
           <div className="small muted">للشاشة الثابتة في الواجهة (F11)</div>
         </a>
-        <Link className="home-card" href={`/manage/${adminToken}`}>
-          <div className="icon">⚙</div>
-          <h3>لوحة التحكم</h3>
-          <div className="small muted">إدارة القاعات والمدرسين والمواعيد</div>
-        </Link>
-        <Link className="home-card" href="/book">
+        <a className="home-card" href="/book">
           <div className="icon">✦</div>
           <h3>الحجز الخارجي</h3>
           <div className="small muted">أرسل هذا الرابط للمدرسين</div>
-        </Link>
+        </a>
       </div>
 
       {halls.length > 0 && (
