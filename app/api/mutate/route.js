@@ -113,7 +113,14 @@ export async function POST(request) {
         if (!Number.isFinite(price) || price < 0) return bad('سعر الساعة غير صحيح')
         const existingColors = cur.halls.map(h => h.color)
         const color = HALL_COLORS.find(c => !existingColors.includes(c)) || HALL_COLORS[cur.halls.length % HALL_COLORS.length]
-        cur.halls.push({ id: uid(), name, pricePerHour: price, color })
+        cur.halls.push({
+          id: uid(), name, pricePerHour: price, color,
+          capacity: Number(body.capacity) || 0,
+          hasScreen: !!body.hasScreen,
+          acCount: Number(body.acCount) || 0,
+          boardsCount: Number(body.boardsCount) || 0,
+          hasInteractiveScreen: !!body.hasInteractiveScreen
+        })
         await saveDB(cur)
         return NextResponse.json({ ok: true })
       }
@@ -127,6 +134,11 @@ export async function POST(request) {
         hall.name = name
         hall.pricePerHour = price
         if (body.color) hall.color = body.color
+        if (body.capacity !== undefined) hall.capacity = Number(body.capacity) || 0
+        if (body.hasScreen !== undefined) hall.hasScreen = !!body.hasScreen
+        if (body.acCount !== undefined) hall.acCount = Number(body.acCount) || 0
+        if (body.boardsCount !== undefined) hall.boardsCount = Number(body.boardsCount) || 0
+        if (body.hasInteractiveScreen !== undefined) hall.hasInteractiveScreen = !!body.hasInteractiveScreen
         await saveDB(cur)
         return NextResponse.json({ ok: true })
       }

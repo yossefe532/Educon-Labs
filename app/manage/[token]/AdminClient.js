@@ -337,10 +337,17 @@ function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
 function HallsTab({ db, run, onEdit }) {
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
+  const [capacity, setCapacity] = useState('')
+  const [hasScreen, setHasScreen] = useState(false)
+  const [acCount, setAcCount] = useState('')
+  const [boardsCount, setBoardsCount] = useState('')
+  const [hasInteractiveScreen, setHasInteractiveScreen] = useState(false)
   async function add() {
     if (!name.trim()) return alert('اسم القاعة')
     if (!(Number(price) >= 0)) return alert('السعر')
-    if (await run('addHall', { name, pricePerHour: Number(price) }, 'تمت الإضافة')) { setName(''); setPrice('') }
+    if (await run('addHall', { name, pricePerHour: Number(price), capacity: Number(capacity), hasScreen, acCount: Number(acCount), boardsCount: Number(boardsCount), hasInteractiveScreen }, 'تمت الإضافة')) {
+      setName(''); setPrice(''); setCapacity(''); setHasScreen(false); setAcCount(''); setBoardsCount(''); setHasInteractiveScreen(false)
+    }
   }
   return (
     <div>
@@ -350,6 +357,17 @@ function HallsTab({ db, run, onEdit }) {
           <div className="field"><span className="label">اسم القاعة</span><input value={name} onChange={e => setName(e.target.value)} placeholder="مثال: Hall 1" /></div>
           <div className="field"><span className="label">سعر الساعة (جنيه)</span><input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></div>
         </div>
+        <div className="form-grid">
+          <div className="field"><span className="label">السعة (عدد الأفراد)</span><input type="number" min="0" value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="مثال: 30" /></div>
+          <div className="field"><span className="label">عدد التكييفات</span><input type="number" min="0" value={acCount} onChange={e => setAcCount(e.target.value)} placeholder="مثال: 2" /></div>
+        </div>
+        <div className="form-grid">
+          <div className="field"><span className="label">عدد السبّورات</span><input type="number" min="0" value={boardsCount} onChange={e => setBoardsCount(e.target.value)} placeholder="مثال: 1" /></div>
+          <div className="field checkbox-field">
+            <label><input type="checkbox" checked={hasScreen} onChange={e => setHasScreen(e.target.checked)} /> مجهزة بشاشة عرض</label>
+            <label><input type="checkbox" checked={hasInteractiveScreen} onChange={e => setHasInteractiveScreen(e.target.checked)} /> شاشة تفاعلية</label>
+          </div>
+        </div>
         <button className="btn btn-primary" onClick={add}>إضافة</button>
       </div>
       {db.halls.map(h => (
@@ -357,6 +375,11 @@ function HallsTab({ db, run, onEdit }) {
           <span className="dot" style={{ background: h.color }} />
           <strong>{h.name}</strong>
           <span className="muted small">{h.pricePerHour} ج/ساعة</span>
+          {h.capacity > 0 && <span className="muted small">{h.capacity} فرد</span>}
+          {h.acCount > 0 && <span className="muted small">{h.acCount} تكييف</span>}
+          {h.boardsCount > 0 && <span className="muted small">{h.boardsCount} سبّورة</span>}
+          {h.hasScreen && <span className="muted small">شاشة</span>}
+          {h.hasInteractiveScreen && <span className="muted small">شاشة تفاعلية</span>}
           <span style={{ flex: 1 }} />
           <button className="btn btn-ghost btn-sm" onClick={() => onEdit(h)}>تعديل</button>
           <button className="btn btn-danger btn-sm" onClick={() => { if (confirm(`حذف "${h.name}"؟`)) run('deleteHall', { id: h.id }, 'تم الحذف') }}>حذف</button>
@@ -371,6 +394,11 @@ function HallModal({ hall, onClose, onSave }) {
   const [name, setName] = useState(hall.name)
   const [price, setPrice] = useState(hall.pricePerHour)
   const [color, setColor] = useState(hall.color)
+  const [capacity, setCapacity] = useState(hall.capacity || '')
+  const [hasScreen, setHasScreen] = useState(hall.hasScreen || false)
+  const [acCount, setAcCount] = useState(hall.acCount || '')
+  const [boardsCount, setBoardsCount] = useState(hall.boardsCount || '')
+  const [hasInteractiveScreen, setHasInteractiveScreen] = useState(hall.hasInteractiveScreen || false)
   const palette = ['#e11d48', '#f43f5e', '#fb7185', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#8b5cf6', '#a855f7', '#ec4899', '#6366f1']
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -380,10 +408,21 @@ function HallModal({ hall, onClose, onSave }) {
           <div className="field"><span className="label">الاسم</span><input value={name} onChange={e => setName(e.target.value)} /></div>
           <div className="field"><span className="label">السعر</span><input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} /></div>
         </div>
+        <div className="form-grid">
+          <div className="field"><span className="label">السعة (عدد الأفراد)</span><input type="number" min="0" value={capacity} onChange={e => setCapacity(e.target.value)} /></div>
+          <div className="field"><span className="label">عدد التكييفات</span><input type="number" min="0" value={acCount} onChange={e => setAcCount(e.target.value)} /></div>
+        </div>
+        <div className="form-grid">
+          <div className="field"><span className="label">عدد السبّورات</span><input type="number" min="0" value={boardsCount} onChange={e => setBoardsCount(e.target.value)} /></div>
+          <div className="field checkbox-field">
+            <label><input type="checkbox" checked={hasScreen} onChange={e => setHasScreen(e.target.checked)} /> مجهزة بشاشة عرض</label>
+            <label><input type="checkbox" checked={hasInteractiveScreen} onChange={e => setHasInteractiveScreen(e.target.checked)} /> شاشة تفاعلية</label>
+          </div>
+        </div>
         <div className="field"><span className="label">اللون</span><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{palette.map(c => <button key={c} onClick={() => setColor(c)} style={{ width: 32, height: 32, borderRadius: 8, border: color === c ? '3px solid #111' : 'none', background: c }} />)}</div></div>
         <div className="modal-foot">
           <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-          <button className="btn btn-primary" onClick={() => onSave({ name: name.trim(), pricePerHour: Number(price), color })}>حفظ</button>
+          <button className="btn btn-primary" onClick={() => onSave({ name: name.trim(), pricePerHour: Number(price), color, capacity: Number(capacity), hasScreen, acCount: Number(acCount), boardsCount: Number(boardsCount), hasInteractiveScreen })}>حفظ</button>
         </div>
       </div>
     </div>

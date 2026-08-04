@@ -46,6 +46,9 @@ input:focus, select:focus { border-color: var(--primary); }
 .checkbox-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .checkbox-row label { display: inline-flex; align-items: center; gap: 4px; background: #fef2f2; border: 1.5px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .checkbox-row input { width: auto; }
+.checkbox-field { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.checkbox-field label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.checkbox-field input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
 
 .toast { position: fixed; bottom: 20px; right: 50%; transform: translateX(50%); background: #1f1215; color: #fff; padding: 10px 20px; border-radius: 10px; font-weight: 700; font-size: 14px; z-index: 999; animation: popIn 0.2s ease; max-width: 90vw; }
 .toast.err { background: var(--danger); }
