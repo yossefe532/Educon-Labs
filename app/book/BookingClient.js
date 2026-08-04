@@ -201,6 +201,14 @@ export default function Booking() {
                 <h3 style={{ marginBottom: 8, marginTop: 16 }}>اختر الوقت</h3>
                 {ranges.length === 0 && <p className="muted">هذا اليوم مكتمل</p>}
                 <div>{ranges.map((r, i) => <button key={i} className="free-slot" onClick={() => pickRange(r)}>{fmtTime(r.start)} - {fmtTime(r.end)}</button>)}</div>
+                {start != null && end != null && (
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <div className="form-grid">
+                      <div className="field"><span className="label">من الساعة</span><select value={start} onChange={e => setStart(Number(e.target.value))}>{Array.from({ length: Math.floor((end - open) / 30) }, (_, i) => open + i * 30).filter(m => m < end).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+                      <div className="field"><span className="label">إلى الساعة</span><select value={end} onChange={e => setEnd(Number(e.target.value))}>{Array.from({ length: Math.floor((close - start) / 30) }, (_, i) => start + 30 + i * 30).filter(m => m <= close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+                    </div>
+                  </div>
+                )}
               </>}
             </>
           )}
@@ -226,7 +234,13 @@ export default function Booking() {
                 {ranges.length === 0 && <p className="muted">هذا اليوم مكتمل</p>}
                 <div>{ranges.map((r, i) => <button key={i} className="free-slot" onClick={() => pickRange(r)}>{fmtTime(r.start)} - {fmtTime(r.end)}</button>)}</div>
                 {start != null && end != null && (
-                  <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={addSlot}>إضافة هذا الموعد</button>
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <div className="form-grid">
+                      <div className="field"><span className="label">من الساعة</span><select value={start} onChange={e => setStart(Number(e.target.value))}>{Array.from({ length: Math.floor((end - open) / 30) }, (_, i) => open + i * 30).filter(m => m < end).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+                      <div className="field"><span className="label">إلى الساعة</span><select value={end} onChange={e => setEnd(Number(e.target.value))}>{Array.from({ length: Math.floor((close - start) / 30) }, (_, i) => start + 30 + i * 30).filter(m => m <= close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+                    </div>
+                    <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={addSlot}>إضافة هذا الموعد</button>
+                  </div>
                 )}
               </>}
               {slots.length > 0 && (

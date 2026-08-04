@@ -149,6 +149,9 @@ export async function POST(request) {
       if (conflicts.length) return bad('هذا الموعد محجوز بالفعل، اختر وقتًا آخر')
       cur.bookings.push(b)
       await saveDB(cur)
+      notifyAdmin(cur, 'طلب حجز جديد', `${b.teacherName} طلب حجز في ${b.hallName} يوم ${b.date} من ${fmtTime(b.start)} إلى ${fmtTime(b.end)}`, `/manage/${cur.settings.adminToken}`).then(results => {
+        loadDB().then(d => { cleanupExpiredSubscriptions(d, results); saveDB(d) })
+      }).catch(() => {})
       return NextResponse.json({ ok: true })
     })
   }
