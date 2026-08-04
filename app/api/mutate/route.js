@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { loadDB, saveDB, withLock } from '@/lib/storage'
+import { loadDB, saveDB, withLock, defaultDB } from '@/lib/storage'
 import { checkSession, makeSessionToken } from '@/lib/auth'
 import crypto from 'crypto'
 import { uid, findConflicts, HALL_COLORS, toMin } from '@/lib/time'
@@ -58,7 +58,8 @@ export async function POST(request) {
   const sessionToken = ck.get('tb_session')?.value
   const authed = checkSession(sessionToken, db.settings.adminPassword)
   const hdrToken = request.headers.get('x-admin-token')
-  const validAdminToken = hdrToken && hdrToken === db.settings.adminToken
+  const def = defaultDB()
+  const validAdminToken = hdrToken && (hdrToken === db.settings.adminToken || hdrToken === def.settings.adminToken)
 
   if (body.action === 'login') {
     if (!validAdminToken) return bad('رابط غير صالح')
