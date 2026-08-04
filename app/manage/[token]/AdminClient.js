@@ -484,7 +484,7 @@ function SettingsTab({ db, run, token }) {
   }
 
   const adminUrl = `${origin}/manage/${token}`
-  const bookingUrl = `${origin}/book/${s.bookingToken || ''}`
+  const bookingUrl = `${origin}/book`
 
   return (
     <div className="settings-grid">
@@ -506,16 +506,14 @@ function SettingsTab({ db, run, token }) {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>روابط الوصول</h3>
-        <p className="small muted" style={{ marginTop: 0 }}>هذه الروابط سرية — لا تشاركها إلا مع المسؤولين</p>
         <div className="field">
-          <span className="label">لوحة التحكم</span>
+          <span className="label">لوحة التحكم (سرية)</span>
           <div className="url-row"><input readOnly value={adminUrl} onFocus={e => e.target.select()} /><button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(adminUrl); alert('تم النسخ') }}>نسخ</button></div>
           <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, color: '#e11d48' }} onClick={() => { if (confirm('إعادة توليد الرابط؟')) run('updateSettings', { regenerateAdminToken: true }, 'تم التحديث — استخدم الرابط الجديد') }}>إعادة توليد الرابط</button>
         </div>
         <div className="field">
-          <span className="label">رابط الحجز الخارجي</span>
+          <span className="label">رابط الحجز الخارجي (عام)</span>
           <div className="url-row"><input readOnly value={bookingUrl} onFocus={e => e.target.select()} /><button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(bookingUrl); alert('تم النسخ') }}>نسخ</button></div>
-          <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, color: '#e11d48' }} onClick={() => { if (confirm('إعادة توليد الرابط؟')) run('updateSettings', { regenerateBookingToken: true }, 'تم التحديث') }}>إعادة توليد الرابط</button>
         </div>
         <p className="small muted">ضع رابط الحجز في المنشورات وأرسله للمدرسين، وافتح شاشة العرض على الشاشة الثابتة.</p>
       </div>

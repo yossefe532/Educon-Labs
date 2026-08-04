@@ -79,8 +79,6 @@ export async function POST(request) {
   }
 
   if (body.action === 'requestBooking') {
-    const bkToken = request.headers.get('x-booking-token')
-    if (db.settings.bookingToken && bkToken !== db.settings.bookingToken) return bad('رابط غير صالح')
     return withLock(async () => {
       const cur = await loadDB()
       const hall = cur.halls.find(h => h.id === body.hallId)
