@@ -119,9 +119,9 @@ export default function Booking() {
   })() : ''
 
   const step = done ? 5 : hallId == null ? 1 : bookingType == null ? 2 :
-    bookingType === 'single' ? ((date == null || start == null) ? 3 : 4) :
+    bookingType === 'single' ? ((date == null || start == null || end == null) ? 3 : 4) :
     bookingType === 'multi' ? (slots.length === 0 ? 3 : 4) :
-    ((start == null || !startDate || !endDate || !days.length) ? 3 : 4)
+    ((start == null || end == null || !startDate || !endDate || !days.length) ? 3 : 4)
 
   return (
     <div className="container">
