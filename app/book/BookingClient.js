@@ -200,13 +200,23 @@ export default function Booking() {
               {date && <>
                 <h3 style={{ marginBottom: 8, marginTop: 16 }}>اختر الوقت</h3>
                 {ranges.length === 0 && <p className="muted">هذا اليوم مكتمل</p>}
-                <div>{ranges.map((r, i) => <button key={i} className="free-slot" onClick={() => pickRange(r)}>{fmtTime(r.start)} - {fmtTime(r.end)}</button>)}</div>
-                {start != null && end != null && (
-                  <div className="card" style={{ marginTop: 12 }}>
+                {ranges.length > 0 && (
+                  <div className="card" style={{ marginTop: 8 }}>
                     <div className="form-grid">
-                      <div className="field"><span className="label">من الساعة</span><select value={start} onChange={e => setStart(Number(e.target.value))}>{Array.from({ length: Math.floor((end - open) / 30) }, (_, i) => open + i * 30).filter(m => m < end).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
-                      <div className="field"><span className="label">إلى الساعة</span><select value={end} onChange={e => setEnd(Number(e.target.value))}>{Array.from({ length: Math.floor((close - start) / 30) }, (_, i) => start + 30 + i * 30).filter(m => m <= close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+                      <div className="field"><span className="label">من الساعة</span>
+                        <select value={start ?? ''} onChange={e => { const v = Number(e.target.value); setStart(v); if (end != null && v >= end) setEnd(null) }}>
+                          <option value="">اختر</option>
+                          {ranges.flatMap(r => Array.from({ length: Math.floor((r.end - r.start) / 30) }, (_, i) => r.start + i * 30).map(m => <option key={m} value={m}>{fmtTime(m)}</option>))}
+                        </select>
+                      </div>
+                      <div className="field"><span className="label">إلى الساعة</span>
+                        <select value={end ?? ''} onChange={e => setEnd(Number(e.target.value))} disabled={start == null}>
+                          <option value="">اختر</option>
+                          {start != null && ranges.flatMap(r => Array.from({ length: Math.floor((r.end - r.start) / 30) }, (_, i) => r.start + (i + 1) * 30).filter(m => m > start && m <= r.end).map(m => <option key={m} value={m}>{fmtTime(m)}</option>))}
+                        </select>
+                      </div>
                     </div>
+                    {start != null && end != null && <p className="small muted" style={{ margin: '8px 0 0' }}>المدة: {(end - start) / 60} ساعة</p>}
                   </div>
                 )}
               </>}
@@ -232,14 +242,28 @@ export default function Booking() {
               {date && <>
                 <h3 style={{ marginBottom: 8, marginTop: 16 }}>اختر الوقت لليوم {arabicDate(date)}</h3>
                 {ranges.length === 0 && <p className="muted">هذا اليوم مكتمل</p>}
-                <div>{ranges.map((r, i) => <button key={i} className="free-slot" onClick={() => pickRange(r)}>{fmtTime(r.start)} - {fmtTime(r.end)}</button>)}</div>
-                {start != null && end != null && (
-                  <div className="card" style={{ marginTop: 12 }}>
+                {ranges.length > 0 && (
+                  <div className="card" style={{ marginTop: 8 }}>
                     <div className="form-grid">
-                      <div className="field"><span className="label">من الساعة</span><select value={start} onChange={e => setStart(Number(e.target.value))}>{Array.from({ length: Math.floor((end - open) / 30) }, (_, i) => open + i * 30).filter(m => m < end).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
-                      <div className="field"><span className="label">إلى الساعة</span><select value={end} onChange={e => setEnd(Number(e.target.value))}>{Array.from({ length: Math.floor((close - start) / 30) }, (_, i) => start + 30 + i * 30).filter(m => m <= close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select></div>
+                      <div className="field"><span className="label">من الساعة</span>
+                        <select value={start ?? ''} onChange={e => { const v = Number(e.target.value); setStart(v); if (end != null && v >= end) setEnd(null) }}>
+                          <option value="">اختر</option>
+                          {ranges.flatMap(r => Array.from({ length: Math.floor((r.end - r.start) / 30) }, (_, i) => r.start + i * 30).map(m => <option key={m} value={m}>{fmtTime(m)}</option>))}
+                        </select>
+                      </div>
+                      <div className="field"><span className="label">إلى الساعة</span>
+                        <select value={end ?? ''} onChange={e => setEnd(Number(e.target.value))} disabled={start == null}>
+                          <option value="">اختر</option>
+                          {start != null && ranges.flatMap(r => Array.from({ length: Math.floor((r.end - r.start) / 30) }, (_, i) => r.start + (i + 1) * 30).filter(m => m > start && m <= r.end).map(m => <option key={m} value={m}>{fmtTime(m)}</option>))}
+                        </select>
+                      </div>
                     </div>
-                    <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={addSlot}>إضافة هذا الموعد</button>
+                    {start != null && end != null && (
+                      <>
+                        <p className="small muted" style={{ margin: '8px 0 0' }}>المدة: {(end - start) / 60} ساعة</p>
+                        <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={addSlot}>إضافة هذا الموعد</button>
+                      </>
+                    )}
                   </div>
                 )}
               </>}
