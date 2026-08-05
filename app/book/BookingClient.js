@@ -114,14 +114,14 @@ export default function Booking() {
   const waPhone = '201067949503'
   const bookingSummary = done ? (() => {
     if (bookingType === 'single') return `${hall?.name} — ${arabicDate(date)} — ${fmtTime(start)}-${fmtTime(end)}`
-    if (bookingType === 'multi') return `${hall?.name} — ${slots.length} أيام`
+    if (bookingType === 'multi') return `${hall?.name} — ${slots.length} أيام — ${slots.map(s => `${arabicDate(s.date)} ${fmtTime(s.start)}-${fmtTime(s.end)}`).join('، ')}`
     return `${hall?.name} — ${days.map(d => DAY_NAMES[d]).join('، ')} — ${fmtTime(start)}-${fmtTime(end)}`
   })() : ''
 
   const step = done ? 5 : hallId == null ? 1 : bookingType == null ? 2 :
-    bookingType === 'single' ? (date == null ? 3 : 4) :
+    bookingType === 'single' ? ((date == null || start == null) ? 3 : 4) :
     bookingType === 'multi' ? (slots.length === 0 ? 3 : 4) :
-    (start == null ? 3 : 4)
+    ((start == null || !startDate || !endDate || !days.length) ? 3 : 4)
 
   return (
     <div className="container">
