@@ -286,6 +286,42 @@ export async function POST(request) {
         }).catch(() => {})
         return NextResponse.json({ ok: true })
       }
+      case 'setOverride': {
+        b = cur.bookings.find(x => x.id === body.bookingId)
+        if (!b) return bad('الحجز غير موجود')
+        if (b.type !== 'recurring') return bad('التحويل متاح للعقود الدوري فقط')
+        const altHall = cur.halls.find(h => h.id === body.altHallId)
+        if (!altHall) return bad('القاعة البديلة غير موجودة')
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) return bad('تاريخ غير صحيح')
+        if (!b.overrideHalls) b.overrideHalls = {}
+        b.overrideHalls[body.date] = { hallId: altHall.id, hallName: altHall.name }
+        await saveDB(cur)
+        return NextResponse.json({ ok: true })
+      }
+      case 'clearOverride': {
+        b = cur.bookings.find(x => x.id === body.bookingId)
+        if (!b) return bad('الحجز غير موجود')
+        if (b.overrideHalls && b.overrideHalls[body.date]) {
+          delete b.overrideHalls[body.date]
+          if (Object.keys(b.overrideHalls).length === 0) delete b.overrideHalls
+        }
+        await saveDB(cur)
+        return NextResponse.json({ ok: true })
+      }
+      case 'clearOverridesRange': {
+        b = cur.bookings.find(x => x.id === body.bookingId)
+        if (!b) return bad('الحجز غير موجود')
+        if (b.overrideHalls) {
+          const from = body.fromDate || ''
+          const to = body.toDate || ''
+          for (const d of Object.keys(b.overrideHalls)) {
+            if ((!from || d >= from) && (!to || d <= to)) delete b.overrideHalls[d]
+          }
+          if (Object.keys(b.overrideHalls).length === 0) delete b.overrideHalls
+        }
+        await saveDB(cur)
+        return NextResponse.json({ ok: true })
+      }
       case 'updateSettings': {
         const s = cur.settings
         if (body.placeName !== undefined) s.placeName = String(body.placeName).trim() || s.placeName

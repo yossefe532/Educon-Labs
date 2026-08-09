@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  DAY_NAMES, fmtTime, fmtTimeShort, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr, bookingTimeRange, arabicDate
+  DAY_NAMES, fmtTime, fmtTimeShort, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr, bookingTimeRange, arabicDate, overrideHallName
 } from '@/lib/time'
 
 const HOUR_H = 46
@@ -192,7 +192,7 @@ export default function Admin({ token }) {
       {tab === 'settings' && <SettingsTab db={db} run={run} token={token} />}
 
       {modal?.kind === 'booking' && <BookingModal initial={modal.initial} db={db} open={open} close={close} editId={modal.editId} onClose={() => setModal(null)} onSave={async p => { if (await run(modal.editId ? 'updateBooking' : 'addBooking', modal.editId ? { id: modal.editId, ...p } : p, modal.editId ? 'تم التعديل' : 'تمت الإضافة')) setModal(null) }} />}
-      {modal?.kind === 'detail' && <DetailModal booking={modal.booking} db={db} onClose={() => setModal(null)} onEdit={() => { const b = modal.booking; setModal({ kind: 'booking', initial: b.type === 'single' ? { hallId: b.hallId, type: 'single', date: b.date, days: [], startDate: '', endDate: '', start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin' } : { hallId: b.hallId, type: b.type || 'recurring', date: '', days: b.days, startDate: b.startDate, endDate: b.endDate, start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin', dayTimes: b.dayTimes || {}, slots: b.slots || [] }, editId: b.id }) }} onApprove={() => run('approveBooking', { id: modal.booking.id }, 'تم الاعتماد').then(() => setModal(null))} onDelete={() => { if (confirm('حذف؟')) run('deleteBooking', { id: modal.booking.id }, 'تم الحذف').then(() => setModal(null)) }} />}
+      {modal?.kind === 'detail' && <DetailModal booking={modal.booking} db={db} run={run} onClose={() => setModal(null)} onEdit={() => { const b = modal.booking; setModal({ kind: 'booking', initial: b.type === 'single' ? { hallId: b.hallId, type: 'single', date: b.date, days: [], startDate: '', endDate: '', start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin' } : { hallId: b.hallId, type: b.type || 'recurring', date: '', days: b.days, startDate: b.startDate, endDate: b.endDate, start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin', dayTimes: b.dayTimes || {}, slots: b.slots || [] }, editId: b.id }) }} onApprove={() => run('approveBooking', { id: modal.booking.id }, 'تم الاعتماد').then(() => setModal(null))} onDelete={() => { if (confirm('حذف؟')) run('deleteBooking', { id: modal.booking.id }, 'تم الحذف').then(() => setModal(null)) }} />}
       {modal?.kind === 'hall' && <HallModal hall={modal.hall} onClose={() => setModal(null)} onSave={async p => { if (await run('updateHall', { id: modal.hall.id, ...p }, 'تم التحديث')) setModal(null) }} />}
       {modal?.kind === 'teacher' && <TeacherModal teacher={modal.teacher} onClose={() => setModal(null)} onSave={async p => { if (await run('updateTeacher', { id: modal.teacher.id, ...p }, 'تم التحديث')) setModal(null) }} />}
 
@@ -273,13 +273,15 @@ function ScheduleTab({ db, open, close, rows, onAdd, onBlock }) {
                       const tPhoto = teacherMap[b.teacherName]?.photo
                       const isCancelled = b.status === 'cancelled'
                       const isCompleted = b.status === 'completed'
+                      const ovName = overrideHallName(b, d)
                       return (
-                        <div key={b.id} className={`blk ${b.status === 'pending' ? 'pending' : ''} ${isCancelled ? 'cancelled' : ''} ${isCompleted ? 'completed' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: isCancelled ? '#9ca3af' : isCompleted ? '#6366f1' : blkBg(hall.color), opacity: isCancelled ? 0.5 : isCompleted ? 0.6 : 1 }} onClick={e => { e.stopPropagation(); onBlock(b) }}>
+                        <div key={b.id} className={`blk ${b.status === 'pending' ? 'pending' : ''} ${isCancelled ? 'cancelled' : ''} ${isCompleted ? 'completed' : ''} ${ovName ? 'overflow' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: ovName ? 'linear-gradient(135deg, #f97316, #ea580c)' : isCancelled ? '#9ca3af' : isCompleted ? '#6366f1' : blkBg(hall.color), opacity: isCancelled ? 0.5 : isCompleted ? 0.6 : 1 }} onClick={e => { e.stopPropagation(); onBlock(b) }}>
                           <div className="blk-row">{tPhoto && <img src={tPhoto} className="blk-avatar" />}<span>{b.teacherName}</span></div>
                           {b.title && <span className="t">{b.title}</span>}
                           <span className="t">{fmtTime(tr.start)} - {fmtTime(tr.end)}</span>
+                          {ovName && <span className="t" style={{ color: '#fecdd3' }}>→ {ovName}</span>}
                           {isCancelled && <span className="t" style={{ color: '#fecdd3' }}>ملغي</span>}
-                          {b.source && <span className="t" style={{ opacity: 0.7 }}>{b.source === 'admin' ? 'أدمن' : b.source === 'student' ? 'طالب' : b.source === 'contract' ? 'عقد' : ''}</span>}
+                          {b.source && !ovName && <span className="t" style={{ opacity: 0.7 }}>{b.source === 'admin' ? 'أدمن' : b.source === 'student' ? 'طالب' : b.source === 'contract' ? 'عقد' : ''}</span>}
                         </div>
                       )
                     })}
@@ -482,7 +484,7 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
   )
 }
 
-function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
+function DetailModal({ booking: b, db, run, onClose, onEdit, onApprove, onDelete }) {
   const hall = db.halls.find(h => h.id === b.hallId)
   const isRec = b.type === 'recurring'
   const isMulti = b.type === 'multi'
@@ -491,6 +493,24 @@ function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
   const statusMap = { pending: ['بانتظار الاعتماد', '#d97706', '#fef3c7'], confirmed: ['مؤكد', '#059669', '#ecfdf5'], cancelled: ['ملغي', '#dc2626', '#fef2f2'], completed: ['منتهي', '#6366f1', '#eef2ff'] }
   const sourceMap = { admin: 'من الأدمن', student: 'حجز طالب', public: 'حجز عام', contract: 'عقد دوري' }
   const [label, bg] = statusMap[b.status] || ['غير معروف', '#6b7280', '#f3f4f6']
+  const [overrideDate, setOverrideDate] = useState('')
+  const [overrideHall, setOverrideHall] = useState('')
+  const overrides = b.overrideHalls || {}
+  const hasOverrides = Object.keys(overrides).length > 0
+  const otherHalls = db.halls.filter(h => h.id !== b.hallId)
+
+  async function setOverride() {
+    if (!overrideDate) return alert('اختر التاريخ')
+    if (!overrideHall) return alert('اختر القاعة البديلة')
+    await run('setOverride', { bookingId: b.id, date: overrideDate, altHallId: overrideHall }, 'تم التحويل')
+    onClose()
+  }
+
+  async function clearOverride(date) {
+    await run('clearOverride', { bookingId: b.id, date }, 'تم الإرجاع')
+    onClose()
+  }
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal">
@@ -503,10 +523,57 @@ function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
         <p className="muted" style={{ marginTop: 0 }}>{b.hallName} — {daysTxt} ({dateTxt}) — {isRec || isMulti ? '' : `${fmtTime(b.start)}-${fmtTime(b.end)}`}{isRec && <span className="small block">تكرار أسبوعي</span>}{isMulti && <span className="small block">مواعيد متعددة</span>}</p>
         {b.title && <p><b>المادة:</b> {b.title}</p>}
         {b.phone && <p dir="ltr" style={{ textAlign: 'right' }}><b>الهاتف:</b> {b.phone}</p>}
+        {isRec && hasOverrides && (
+          <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: 10, marginBottom: 10 }}>
+            <p style={{ margin: '0 0 6px', fontWeight: 800, fontSize: 13 }}>تحويلات مؤقتة</p>
+            {Object.entries(overrides).map(([date, ov]) => (
+              <div key={date} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, fontSize: 12 }}>
+                <span className="dot" style={{ background: '#f97316' }} />
+                <b>{arabicDate(date)}</b>
+                <span className="muted">→</span>
+                <span style={{ fontWeight: 700, color: '#ea580c' }}>{ov.hallName}</span>
+                <button className="btn btn-danger btn-sm" style={{ marginRight: 'auto', padding: '2px 8px', fontSize: 11 }} onClick={() => { if (confirm('إرجاع للمكان الأصلي؟')) clearOverride(date) }}>إرجاع</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {isRec && otherHalls.length > 0 && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: 10, marginBottom: 10 }}>
+            <p style={{ margin: '0 0 6px', fontWeight: 800, fontSize: 13 }}>تحويل مؤقت لقاعه تانية</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <span className="label">التاريخ</span>
+                <select value={overrideDate} onChange={e => setOverrideDate(e.target.value)} style={{ width: '100%', padding: '6px 8px', fontSize: 12, borderRadius: 8, border: '1.5px solid var(--line)' }}>
+                  <option value="">اختر يوم</option>
+                  {b.days.map(d => {
+                    const dates = []
+                    const d2 = new Date(b.startDate)
+                    const end = new Date(b.endDate)
+                    while (d2 <= end) {
+                      if ((d2.getDay() + 1) % 7 === d) dates.push(dateStr(d2))
+                      d2.setDate(d2.getDate() + 1)
+                    }
+                    return dates.slice(0, 8).map(date => (
+                      <option key={date} value={date} disabled={!!overrides[date]}>{arabicDate(date)}</option>
+                    ))
+                  })}
+                </select>
+              </div>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <span className="label">القاعة البديلة</span>
+                <select value={overrideHall} onChange={e => setOverrideHall(e.target.value)} style={{ width: '100%', padding: '6px 8px', fontSize: 12, borderRadius: 8, border: '1.5px solid var(--line)' }}>
+                  <option value="">اختر قاعة</option>
+                  {otherHalls.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                </select>
+              </div>
+              <button className="btn btn-ok btn-sm" onClick={setOverride}>تحويل</button>
+            </div>
+          </div>
+        )}
         <div className="modal-foot">
           {b.status === 'pending' && <button className="btn btn-ok" onClick={onApprove}>اعتماد</button>}
-          {b.status === 'confirmed' && <button className="btn btn-ghost btn-sm" style={{ color: '#d97706' }} onClick={() => { if (confirm('إلغاء الحجز؟')) run('updateBooking', { id: b.id, status: 'cancelled' }, 'تم الإلغاء').then(() => onClose()) }}>إلغاء</button>}
-          {b.status === 'cancelled' && <button className="btn btn-ghost btn-sm" style={{ color: '#059669' }} onClick={() => { if (confirm('إعادة تأكيد؟')) run('updateBooking', { id: b.id, status: 'confirmed' }, 'تم التأكيد').then(() => onClose()) }}>إعادة تأكيد</button>}
+          {b.status === 'confirmed' && <button className="btn btn-ghost btn-sm" style={{ color: '#d97706' }} onClick={() => { if (confirm('إلغاء الحجز؟')) run('updateBooking', { id: b.id, status: 'cancelled' }, 'تم الإلغاء').then(() => setModal(null)) }}>إلغاء</button>}
+          {b.status === 'cancelled' && <button className="btn btn-ghost btn-sm" style={{ color: '#059669' }} onClick={() => { if (confirm('إعادة تأكيد؟')) run('updateBooking', { id: b.id, status: 'confirmed' }, 'تم التأكيد').then(() => setModal(null)) }}>إعادة تأكيد</button>}
           {b.phone && b.status === 'confirmed' && <a className="btn btn-whatsapp" target="_blank" rel="noreferrer" href={waLink(b.phone, `تأكيد موعد ${b.hallName}: ${daysTxt}`)}>واتساب</a>}
           <button className="btn btn-ghost" onClick={onEdit}>تعديل</button>
           <button className="btn btn-danger" onClick={onDelete}>حذف</button>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { DAY_NAMES, fmtTime, fmtTimeShort, bookingsForDay, addDays, weekdayOf, arabicDate, todayStr, dateStr, bookingTimeRange } from '@/lib/time'
+import { DAY_NAMES, fmtTime, fmtTimeShort, bookingsForDay, addDays, weekdayOf, arabicDate, todayStr, dateStr, bookingTimeRange, overrideHallName } from '@/lib/time'
 
 const HOUR_H = 68
 
@@ -120,11 +120,13 @@ export default function Display() {
                           {isToday && nowMin >= open && nowMin <= close && <div className="now-line" style={{ top: ((nowMin - open) / (close - open)) * 100 + '%' }} />}
                           {blks.map(b => {
                             const top = ((b.start - open) / (close - open)) * 100, h = ((b.end - b.start) / (close - open)) * 100, st = blockState(b, d), tp = teacherMap[b.teacherName]?.photo
+                            const ovName = overrideHallName(b, d)
                             return (
-                              <div key={b.id} className={`disp-blk ${st} ${b.status === 'pending' ? 'pending' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: blkBg(hall.color) }}>
+                              <div key={b.id} className={`disp-blk ${st} ${b.status === 'pending' ? 'pending' : ''} ${ovName ? 'overflow' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: ovName ? 'linear-gradient(135deg, #f97316, #ea580c)' : blkBg(hall.color) }}>
                                 <div className="blk-row">{tp && <img src={tp} className="blk-avatar" />}<span>{b.teacherName}</span></div>
                                 {b.title && <span className="bt">{b.title}</span>}
                                 {b.type === 'recurring' && <span className="bt">دوري</span>}
+                                {ovName && <span className="bt" style={{ color: '#fecdd3' }}>→ {ovName}</span>}
                                 <span className="bt">{fmtTime(b.start)} - {fmtTime(b.end)}</span>
                               </div>
                             )
