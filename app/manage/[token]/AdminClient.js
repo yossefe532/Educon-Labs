@@ -433,12 +433,12 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
             {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'e')}
           </div>
         )}
+        {field('اسم المدرس', <input value={f.teacherName || ''} onChange={set('tn')} placeholder="اكتب الاسم مباشرة — لو جديد هيتسجل تلقائيًا" />, 'tn2')}
         <div className="form-grid">
-          {field('المدرس', <select value="" onChange={e => pickTeacher(e.target.value)}><option value="">اختر مدرسًا...</option>{db.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>, 'tt')}
+          {field('اختر من الموجودين', <select value="" onChange={e => pickTeacher(e.target.value)}><option value="">...</option>{db.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>, 'tt')}
           {field('المادة (اختياري)', <input value={f.title || ''} onChange={set('title')} placeholder="مثال: رياضيات" />, 'ti')}
           {field('المصدر', <select value={f.source || 'admin'} onChange={set('source')}><option value="admin">من الأدمن</option><option value="student">حجز طالب</option><option value="contract">عقد دوري</option></select>, 'src')}
         </div>
-        {field('اسم المدرس', <input value={f.teacherName || ''} onChange={set('tn')} placeholder="الاسم" />, 'tn2')}
         <div className="modal-foot">
           <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
           <button className="btn btn-primary" disabled={busy} onClick={submit}>{busy ? '...' : 'حفظ'}</button>

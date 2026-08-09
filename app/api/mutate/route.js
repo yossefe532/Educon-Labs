@@ -232,6 +232,9 @@ export async function POST(request) {
         if (v.error) return bad(v.error)
         hall = cur.halls.find(h => h.id === v.value.hallId)
         if (!hall) return bad('القاعة غير موجودة')
+        if (v.value.teacherName && !cur.teachers.some(t => t.name === v.value.teacherName)) {
+          cur.teachers.push({ id: uid(), name: v.value.teacherName, phone: String(body.phone || '').trim(), photo: '' })
+        }
         b = { ...v.value, id: uid(), hallName: hall.name, status: body.status === 'pending' ? 'pending' : 'confirmed', source: body.source || 'admin', createdAt: Date.now() }
         const conflicts = findConflicts(cur.bookings, b)
         if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
@@ -246,6 +249,9 @@ export async function POST(request) {
         if (v.error) return bad(v.error)
         hall = cur.halls.find(h => h.id === v.value.hallId)
         if (!hall) return bad('القاعة غير موجودة')
+        if (v.value.teacherName && !cur.teachers.some(t => t.name === v.value.teacherName)) {
+          cur.teachers.push({ id: uid(), name: v.value.teacherName, phone: String(body.phone || '').trim(), photo: '' })
+        }
         const next = { ...b, ...v.value, id: b.id, hallName: hall.name, status: body.status === 'pending' ? 'pending' : 'confirmed' }
         const conflicts = findConflicts(cur.bookings, next, b.id)
         if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
