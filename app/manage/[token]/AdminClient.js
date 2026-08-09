@@ -433,7 +433,7 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
             {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'e')}
           </div>
         )}
-        {field('اسم المدرس', <input value={f.teacherName || ''} onChange={set('tn')} placeholder="اكتب الاسم مباشرة — لو جديد هيتسجل تلقائيًا" />, 'tn2')}
+        {field('اسم المدرس', <input value={f.teacherName || ''} onChange={set('teacherName')} placeholder="اكتب الاسم مباشرة — لو جديد هيتسجل تلقائيًا" />, 'tn2')}
         <div className="form-grid">
           {field('اختر من الموجودين', <select value="" onChange={e => pickTeacher(e.target.value)}><option value="">...</option>{db.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>, 'tt')}
           {field('المادة (اختياري)', <input value={f.title || ''} onChange={set('title')} placeholder="مثال: رياضيات" />, 'ti')}
