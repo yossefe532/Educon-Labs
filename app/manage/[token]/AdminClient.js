@@ -414,24 +414,27 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, 
     setBusy(true)
     try {
       const r = await mutate({ action: editId ? 'updateBooking' : 'addBooking', ...(editId ? { id: editId, ...candidate } : candidate) })
-      if (r && r.ok) {
-        const bookingId = r.id || editId
+      if (!r || !r.ok) {
+        showToast(r?.error || 'حدث خطأ في الحفظ', true)
+        return
+      }
+      const bookingId = r.id || editId
+      if (bookingId) {
         for (const [date, altHallId] of Object.entries(overflowPlan)) {
-          if (altHallId && bookingId) {
-            await mutate({ action: 'setOverride', bookingId, date, altHallId })
+          if (altHallId) {
+            try { await mutate({ action: 'setOverride', bookingId, date, altHallId }) } catch {}
           }
         }
-        showToast('تم الحفظ مع التحويل')
-        await fetchState()
-        setConflictAnalysis(null)
-        onClose()
-      } else {
-        showToast(r?.error || 'حدث خطأ', true)
       }
+      showToast('تم الحفظ مع التحويل')
+      await fetchState()
+      setConflictAnalysis(null)
+      onClose()
     } catch (e) {
       showToast(e.message || 'حدث خطأ', true)
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   async function saveFreeOnly() {
@@ -461,8 +464,9 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, 
       setConflictAnalysis(null)
     } catch (e) {
       showToast(e.message || 'حدث خطأ', true)
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   function pickTeacher(id) {
