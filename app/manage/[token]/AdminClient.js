@@ -363,7 +363,7 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
     if (!f.hallId) return alert('اختر القاعة')
     if (f.type === 'recurring' && (!f.days || !f.days.length)) return alert('اختر الأيام')
     if (f.type === 'multi' && (!f.slots || !f.slots.length)) return alert('أضف موعدًا واحدًا على الأقل')
-    if (f.end <= f.start && f.type !== 'multi') return alert('وقت النهاية بعد البداية')
+    if (Number(f.end) <= Number(f.start) && f.type !== 'multi') return alert('وقت النهاية بعد البداية')
     if (!f.teacherName?.trim()) return alert('اسم المدرس')
     setBusy(true)
     const p = { hallId: f.hallId, type: f.type, start: Number(f.start), end: Number(f.end), teacherName: f.teacherName.trim(), title: (f.title || '').trim(), status: f.status || 'confirmed', phone: f.phone || '', source: f.source || 'admin' }
