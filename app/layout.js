@@ -2,7 +2,8 @@ import './globals.css'
 
 export const metadata = {
   title: 'EDUCON ACADEMY — نظام حجز القاعات',
-  description: 'اكاديمية ايديكون للتدريب — نظام إدارة حجز قاعات المدرسين'
+  description: 'اكاديمية ايديكون للتدريب — نظام إدارة حجز قاعات المدرسين',
+  icons: { icon: '/favicon.svg' }
 }
 
 export default function RootLayout({ children }) {
