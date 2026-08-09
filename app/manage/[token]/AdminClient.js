@@ -192,7 +192,7 @@ export default function Admin({ token }) {
       {tab === 'settings' && <SettingsTab db={db} run={run} token={token} />}
 
       {modal?.kind === 'booking' && <BookingModal initial={modal.initial} db={db} open={open} close={close} editId={modal.editId} onClose={() => setModal(null)} onSave={async p => { if (await run(modal.editId ? 'updateBooking' : 'addBooking', modal.editId ? { id: modal.editId, ...p } : p, modal.editId ? 'تم التعديل' : 'تمت الإضافة')) setModal(null) }} />}
-      {modal?.kind === 'detail' && <DetailModal booking={modal.booking} db={db} onClose={() => setModal(null)} onEdit={() => { const b = modal.booking; setModal({ kind: 'booking', initial: b.type === 'single' ? { hallId: b.hallId, type: 'single', date: b.date, days: [], startDate: '', endDate: '', start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status } : { hallId: b.hallId, type: 'recurring', date: '', days: b.days, startDate: b.startDate, endDate: b.endDate, start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status }, editId: b.id }) }} onApprove={() => run('approveBooking', { id: modal.booking.id }, 'تم الاعتماد').then(() => setModal(null))} onDelete={() => { if (confirm('حذف؟')) run('deleteBooking', { id: modal.booking.id }, 'تم الحذف').then(() => setModal(null)) }} />}
+      {modal?.kind === 'detail' && <DetailModal booking={modal.booking} db={db} onClose={() => setModal(null)} onEdit={() => { const b = modal.booking; setModal({ kind: 'booking', initial: b.type === 'single' ? { hallId: b.hallId, type: 'single', date: b.date, days: [], startDate: '', endDate: '', start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin' } : { hallId: b.hallId, type: b.type || 'recurring', date: '', days: b.days, startDate: b.startDate, endDate: b.endDate, start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin', dayTimes: b.dayTimes || {}, slots: b.slots || [] }, editId: b.id }) }} onApprove={() => run('approveBooking', { id: modal.booking.id }, 'تم الاعتماد').then(() => setModal(null))} onDelete={() => { if (confirm('حذف؟')) run('deleteBooking', { id: modal.booking.id }, 'تم الحذف').then(() => setModal(null)) }} />}
       {modal?.kind === 'hall' && <HallModal hall={modal.hall} onClose={() => setModal(null)} onSave={async p => { if (await run('updateHall', { id: modal.hall.id, ...p }, 'تم التحديث')) setModal(null) }} />}
       {modal?.kind === 'teacher' && <TeacherModal teacher={modal.teacher} onClose={() => setModal(null)} onSave={async p => { if (await run('updateTeacher', { id: modal.teacher.id, ...p }, 'تم التحديث')) setModal(null) }} />}
 
@@ -300,7 +300,12 @@ function RequestsTab({ db, run, waLink }) {
 
   function bookingSummary(b) {
     if (b.type === 'multi') return `${b.hallName} — ${b.slots?.length || 0} أيام`
-    if (b.type === 'recurring') return `${b.hallName} — ${b.days?.map(d => DAY_NAMES[d]).join('، ')} — ${fmtTime(b.start)}-${fmtTime(b.end)}`
+    if (b.type === 'recurring') {
+      if (b.dayTimes && Object.keys(b.dayTimes).length) {
+        return `${b.hallName} — ${b.days?.map(d => `${DAY_NAMES[d]} ${fmtTime(b.dayTimes[d].start)}-${fmtTime(b.dayTimes[d].end)}`).join('، ')}`
+      }
+      return `${b.hallName} — ${b.days?.map(d => DAY_NAMES[d]).join('، ')} — ${fmtTime(b.start)}-${fmtTime(b.end)}`
+    }
     return `${b.hallName} — ${DAY_NAMES[weekdayOf(b.date)]} ${b.date} — ${fmtTime(b.start)}-${fmtTime(b.end)}`
   }
 
@@ -369,7 +374,18 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
     const p = { hallId: f.hallId, type: f.type, start: Number(f.start), end: Number(f.end), teacherName: f.teacherName.trim(), title: (f.title || '').trim(), status: f.status || 'confirmed', phone: f.phone || '', source: f.source || 'admin' }
     if (f.type === 'single') p.date = f.date
     else if (f.type === 'multi') { p.slots = f.slots || []; p.date = f.slots[0]?.date || f.date }
-    else { p.days = f.days; p.startDate = f.startDate; p.endDate = f.endDate }
+    else {
+      p.days = f.days; p.startDate = f.startDate; p.endDate = f.endDate
+      if (f.dayTimes && Object.keys(f.dayTimes).length) {
+        p.dayTimes = {}
+        for (const d of f.days) {
+          const dt = f.dayTimes[d]
+          if (dt) p.dayTimes[d] = { start: Number(dt.start), end: Number(dt.end) }
+        }
+        p.start = Math.min(...Object.values(p.dayTimes).map(t => t.start))
+        p.end = Math.max(...Object.values(p.dayTimes).map(t => t.end))
+      }
+    }
     onSave(p).finally(() => setBusy(false))
   }
 
@@ -419,12 +435,30 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
         )}
         {f.type === 'recurring' && (
           <>
-            <div className="field"><span className="label">الأيام</span><div className="checkbox-row">{DAY_NAMES.map((n, i) => <label key={i}><input type="checkbox" checked={f.days?.includes(i)} onChange={e => setF({ ...f, days: e.target.checked ? [...(f.days || []), i] : (f.days || []).filter(d => d !== i) })} />{n}</label>)}</div></div>
+            <div className="field"><span className="label">الأيام والمواعيد</span><div className="checkbox-row">{DAY_NAMES.map((n, i) => <label key={i}><input type="checkbox" checked={f.days?.includes(i)} onChange={e => {
+              const newDays = e.target.checked ? [...(f.days || []), i] : (f.days || []).filter(d => d !== i)
+              const newDayTimes = { ...f.dayTimes }
+              if (e.target.checked && !newDayTimes[i]) newDayTimes[i] = { start: f.start || open, end: Math.min((Number(f.start) || open) + 60, close) }
+              if (!e.target.checked) delete newDayTimes[i]
+              setF({ ...f, days: newDays, dayTimes: newDayTimes })
+            }} />{n}</label>)}</div></div>
             <div className="form-grid">{field('من', <input type="date" value={f.startDate} onChange={set('startDate')} />, 'sd')}{field('إلى', <input type="date" value={f.endDate} onChange={set('endDate')} />, 'ed')}</div>
-            <div className="form-grid">
-              {field('من الساعة', <select value={f.start} onChange={set('start')}>{hours.filter(m => m < close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 's')}
-              {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'e')}
-            </div>
+            {(f.days || []).length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {(f.days || []).map(di => (
+                  <div key={di} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 800, fontSize: 13, minWidth: 50 }}>{DAY_NAMES[di]}</span>
+                    <select value={f.dayTimes?.[di]?.start ?? f.start ?? open} onChange={e => setF({ ...f, dayTimes: { ...f.dayTimes, [di]: { ...f.dayTimes?.[di], start: Number(e.target.value) } } })} style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--line)', fontSize: 13 }}>
+                      {hours.filter(m => m < close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}
+                    </select>
+                    <span style={{ fontWeight: 700 }}>→</span>
+                    <select value={f.dayTimes?.[di]?.end ?? f.end ?? close} onChange={e => setF({ ...f, dayTimes: { ...f.dayTimes, [di]: { ...f.dayTimes?.[di], end: Number(e.target.value) } } })} style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--line)', fontSize: 13 }}>
+                      {hours.filter(m => m > (f.dayTimes?.[di]?.start ?? f.start ?? open)).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
         {f.type === 'single' && (
@@ -452,8 +486,8 @@ function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
   const hall = db.halls.find(h => h.id === b.hallId)
   const isRec = b.type === 'recurring'
   const isMulti = b.type === 'multi'
-  const daysTxt = isRec ? b.days.map(d => DAY_NAMES[d]).join('، ') : isMulti ? `${b.slots?.length || 0} أيام` : DAY_NAMES[weekdayOf(b.date)]
-  const dateTxt = isRec ? `${b.startDate} حتى ${b.endDate}` : isMulti ? (b.slots || []).map(s => `${arabicDate(s.date)} ${fmtTime(s.start)}-${fmtTime(s.end)}`).join('، ') : b.date
+  const daysTxt = isRec ? (b.dayTimes && Object.keys(b.dayTimes).length ? b.days.map(d => `${DAY_NAMES[d]} ${fmtTime(b.dayTimes[d].start)}-${fmtTime(b.dayTimes[d].end)}`).join('، ') : b.days.map(d => DAY_NAMES[d]).join('، ')) : isMulti ? `${b.slots?.length || 0} أيام` : DAY_NAMES[weekdayOf(b.date)]
+  const dateTxt = isRec && !(b.dayTimes && Object.keys(b.dayTimes).length) ? `${b.startDate} حتى ${b.endDate} — ${fmtTime(b.start)}-${fmtTime(b.end)}` : isRec ? `${b.startDate} حتى ${b.endDate}` : isMulti ? (b.slots || []).map(s => `${arabicDate(s.date)} ${fmtTime(s.start)}-${fmtTime(s.end)}`).join('، ') : b.date
   const statusMap = { pending: ['بانتظار الاعتماد', '#d97706', '#fef3c7'], confirmed: ['مؤكد', '#059669', '#ecfdf5'], cancelled: ['ملغي', '#dc2626', '#fef2f2'], completed: ['منتهي', '#6366f1', '#eef2ff'] }
   const sourceMap = { admin: 'من الأدمن', student: 'حجز طالب', public: 'حجز عام', contract: 'عقد دوري' }
   const [label, bg] = statusMap[b.status] || ['غير معروف', '#6b7280', '#f3f4f6']

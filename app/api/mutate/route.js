@@ -76,6 +76,16 @@ function validateBookingFields(body) {
     b.days = days
     b.startDate = body.startDate
     b.endDate = body.endDate
+    if (body.dayTimes && typeof body.dayTimes === 'object') {
+      const dt = {}
+      for (const d of days) {
+        const t = body.dayTimes[d]
+        if (t && Number.isFinite(Number(t.start)) && Number.isFinite(Number(t.end)) && Number(t.start) < Number(t.end)) {
+          dt[d] = { start: Number(t.start), end: Number(t.end) }
+        }
+      }
+      if (Object.keys(dt).length) b.dayTimes = dt
+    }
   }
   return { value: b }
 }
@@ -127,10 +137,12 @@ export async function POST(request) {
           openTime: cur.settings.openTime, closeTime: cur.settings.closeTime
         })
       } else if (bookingType === 'recurring') {
+        const dayTimes = body.dayTimes ? Object.fromEntries(Object.entries(body.dayTimes).map(([d, t]) => [Number(d), { start: toMin(t.start ?? t.start), end: toMin(t.end ?? t.end) }])) : undefined
         v = validateBookingFields({
           type: 'recurring', hallId: body.hallId,
           days: body.days, startDate: body.startDate, endDate: body.endDate,
           start: toMin(body.start), end: toMin(body.end),
+          dayTimes,
           teacherName: body.teacherName, title: body.title, phone: body.phone,
           openTime: cur.settings.openTime, closeTime: cur.settings.closeTime
         })

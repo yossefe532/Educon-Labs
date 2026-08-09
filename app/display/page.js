@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { DAY_NAMES, fmtTime, bookingsForDay, addDays, weekdayOf, arabicDate, todayStr, dateStr } from '@/lib/time'
+import { DAY_NAMES, fmtTime, bookingsForDay, addDays, weekdayOf, arabicDate, todayStr, dateStr, bookingTimeRange } from '@/lib/time'
 
 const HOUR_H = 68
 
@@ -34,7 +34,14 @@ export default function Display() {
   const teacherMap = useMemo(() => { const m = {}; (db?.teachers || []).forEach(t => { m[t.name] = t }); return m }, [db?.teachers])
 
   const todayByHall = useMemo(() => {
-    const out = {}; for (const h of halls) out[h.id] = bookingsForDay(db?.bookings || [], h.id, today).sort((a, b) => a.start - b.start); return out
+    const out = {}; for (const h of halls) {
+      const bookings = bookingsForDay(db?.bookings || [], h.id, today)
+      out[h.id] = bookings.map(b => {
+        const tr = bookingTimeRange(b, today)
+        return tr ? { ...b, start: tr.start, end: tr.end } : b
+      }).sort((a, b) => a.start - b.start)
+    }
+    return out
   }, [db, halls, today])
 
   const strip = useMemo(() => {
@@ -92,7 +99,13 @@ export default function Display() {
         <div className="disp-scroll">
           {halls.length === 0 && <p style={{ color: '#9a8ca0', padding: 30, textAlign: 'center' }}>أضف القاعات من لوحة التحكم</p>}
           {halls.map(hall => {
-            const dayBookings = days.map(d => bookingsForDay(db.bookings, hall.id, d))
+            const dayBookings = days.map(d => {
+              const bookings = bookingsForDay(db.bookings, hall.id, d)
+              return bookings.map(b => {
+                const tr = bookingTimeRange(b, d)
+                return tr ? { ...b, start: tr.start, end: tr.end } : b
+              })
+            })
             return (
               <section className="disp-hall" key={hall.id}>
                 <div className="disp-hall-head"><span className="dot" style={{ background: hall.color }} />{hall.name}<span style={{ opacity: 0.6, fontWeight: 600, fontSize: 11 }}>{hall.pricePerHour} ج/ساعة</span></div>
