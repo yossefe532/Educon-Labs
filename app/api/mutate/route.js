@@ -252,7 +252,7 @@ export async function POST(request) {
         if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
         cur.bookings.push(b)
         await saveDB(cur)
-        return NextResponse.json({ ok: true })
+        return NextResponse.json({ ok: true, id: b.id })
       }
       case 'updateBooking': {
         b = cur.bookings.find(x => x.id === body.id)

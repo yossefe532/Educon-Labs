@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  DAY_NAMES, fmtTime, fmtTimeShort, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr, bookingTimeRange, arabicDate, overrideHallName
+  DAY_NAMES, fmtTime, fmtTimeShort, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr, bookingTimeRange, arabicDate, overrideHallName, analyzeConflicts
 } from '@/lib/time'
 
 const HOUR_H = 46
@@ -99,10 +99,10 @@ export default function Admin({ token }) {
 
   const run = useCallback(async (action, payload, msg) => {
     try {
-      await mutate({ action, ...payload })
+      const r = await mutate({ action, ...payload })
       if (msg) showToast(msg)
-      return true
-    } catch (e) { showToast(e.message, true); return false }
+      return r
+    } catch (e) { showToast(e.message, true); return null }
   }, [mutate, showToast])
 
   const toggleNotif = useCallback(async () => {
@@ -191,7 +191,7 @@ export default function Admin({ token }) {
       {tab === 'teachers' && <TeachersTab db={db} run={run} onEdit={t => setModal({ kind: 'teacher', teacher: t })} />}
       {tab === 'settings' && <SettingsTab db={db} run={run} token={token} />}
 
-      {modal?.kind === 'booking' && <BookingModal initial={modal.initial} db={db} open={open} close={close} editId={modal.editId} onClose={() => setModal(null)} onSave={async p => { if (await run(modal.editId ? 'updateBooking' : 'addBooking', modal.editId ? { id: modal.editId, ...p } : p, modal.editId ? 'تم التعديل' : 'تمت الإضافة')) setModal(null) }} />}
+      {modal?.kind === 'booking' && <BookingModal initial={modal.initial} db={db} open={open} close={close} editId={modal.editId} onClose={() => setModal(null)} run={run} mutate={mutate} fetchState={fetchState} onSave={async p => { const r = await run(modal.editId ? 'updateBooking' : 'addBooking', modal.editId ? { id: modal.editId, ...p } : p, modal.editId ? 'تم التعديل' : 'تمت الإضافة'); if (r) { setModal(null); return r } return null }} />}
       {modal?.kind === 'detail' && <DetailModal booking={modal.booking} db={db} run={run} onClose={() => setModal(null)} onEdit={() => { const b = modal.booking; setModal({ kind: 'booking', initial: b.type === 'single' ? { hallId: b.hallId, type: 'single', date: b.date, days: [], startDate: '', endDate: '', start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin' } : { hallId: b.hallId, type: b.type || 'recurring', date: '', days: b.days, startDate: b.startDate, endDate: b.endDate, start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin', dayTimes: b.dayTimes || {}, slots: b.slots || [] }, editId: b.id }) }} onApprove={() => run('approveBooking', { id: modal.booking.id }, 'تم الاعتماد').then(() => setModal(null))} onDelete={() => { if (confirm('حذف؟')) run('deleteBooking', { id: modal.booking.id }, 'تم الحذف').then(() => setModal(null)) }} />}
       {modal?.kind === 'hall' && <HallModal hall={modal.hall} onClose={() => setModal(null)} onSave={async p => { if (await run('updateHall', { id: modal.hall.id, ...p }, 'تم التحديث')) setModal(null) }} />}
       {modal?.kind === 'teacher' && <TeacherModal teacher={modal.teacher} onClose={() => setModal(null)} onSave={async p => { if (await run('updateTeacher', { id: modal.teacher.id, ...p }, 'تم التحديث')) setModal(null) }} />}
@@ -360,19 +360,15 @@ function RequestsTab({ db, run, waLink }) {
   )
 }
 
-function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
+function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, mutate, fetchState }) {
   const [f, setF] = useState({ ...initial })
   const [busy, setBusy] = useState(false)
+  const [conflictAnalysis, setConflictAnalysis] = useState(null)
+  const [overflowPlan, setOverflowPlan] = useState({})
   const set = k => e => setF({ ...f, [k]: e.target.value })
   const hours = timeOptions(open, close, 30)
 
-  function submit() {
-    if (!f.hallId) return alert('اختر القاعة')
-    if (f.type === 'recurring' && (!f.days || !f.days.length)) return alert('اختر الأيام')
-    if (f.type === 'multi' && (!f.slots || !f.slots.length)) return alert('أضف موعدًا واحدًا على الأقل')
-    if (Number(f.end) <= Number(f.start) && f.type !== 'multi') return alert('وقت النهاية بعد البداية')
-    if (!f.teacherName?.trim()) return alert('اسم المدرس')
-    setBusy(true)
+  function buildCandidate() {
     const p = { hallId: f.hallId, type: f.type, start: Number(f.start), end: Number(f.end), teacherName: f.teacherName.trim(), title: (f.title || '').trim(), status: f.status || 'confirmed', phone: f.phone || '', source: f.source || 'admin' }
     if (f.type === 'single') p.date = f.date
     else if (f.type === 'multi') { p.slots = f.slots || []; p.date = f.slots[0]?.date || f.date }
@@ -388,7 +384,75 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
         p.end = Math.max(...Object.values(p.dayTimes).map(t => t.end))
       }
     }
-    onSave(p).finally(() => setBusy(false))
+    return p
+  }
+
+  function submit() {
+    if (!f.hallId) return alert('اختر القاعة')
+    if (f.type === 'recurring' && (!f.days || !f.days.length)) return alert('اختر الأيام')
+    if (f.type === 'multi' && (!f.slots || !f.slots.length)) return alert('أضف موعدًا واحدًا على الأقل')
+    if (Number(f.end) <= Number(f.start) && f.type !== 'multi') return alert('وقت النهاية بعد البداية')
+    if (!f.teacherName?.trim()) return alert('اسم المدرس')
+    const candidate = buildCandidate()
+    const analysis = analyzeConflicts(db.bookings, candidate, db.halls, editId)
+    if (analysis.conflicting.length > 0) {
+      const plan = {}
+      for (const c of analysis.conflicting) {
+        const alts = analysis.altHalls[c.date]
+        if (alts && alts.length) plan[c.date] = alts[0].id
+      }
+      setOverflowPlan(plan)
+      setConflictAnalysis(analysis)
+      return
+    }
+    setBusy(true)
+    onSave(candidate).finally(() => setBusy(false))
+  }
+
+  async function saveWithOverflow() {
+    const candidate = buildCandidate()
+    setBusy(true)
+    const r = await mutate({ action: editId ? 'updateBooking' : 'addBooking', ...(editId ? { id: editId, ...candidate } : candidate) })
+    if (r && r.ok) {
+      const bookingId = r.id || editId
+      for (const [date, altHallId] of Object.entries(overflowPlan)) {
+        if (altHallId && bookingId) {
+          await mutate({ action: 'setOverride', bookingId, date, altHallId })
+        }
+      }
+      showToast('تم الحفظ مع التحويل')
+      await fetchState()
+    }
+    setConflictAnalysis(null)
+    setBusy(false)
+    onClose()
+  }
+
+  async function saveFreeOnly() {
+    const candidate = buildCandidate()
+    const freeDates = new Set(conflictAnalysis.free)
+    if (candidate.type === 'single') {
+      if (!freeDates.has(candidate.date)) { alert('هذا اليوم متعارض'); return }
+    } else if (candidate.type === 'multi') {
+      candidate.slots = (candidate.slots || []).filter(s => freeDates.has(s.date))
+      if (!candidate.slots.length) { alert('كل الأيام متعارضة'); return }
+    } else if (candidate.type === 'recurring') {
+      candidate.days = candidate.days.filter(d => {
+        const dates = []
+        const d2 = new Date(candidate.startDate)
+        const end = new Date(candidate.endDate)
+        while (d2 <= end) {
+          if ((d2.getDay() + 1) % 7 === d && freeDates.has(dateStr(d2))) dates.push(dateStr(d2))
+          d2.setDate(d2.getDate() + 1)
+        }
+        return dates.length > 0
+      })
+      if (!candidate.days.length) { alert('كل الأيام متعارضة'); return }
+    }
+    setBusy(true)
+    await onSave(candidate)
+    setConflictAnalysis(null)
+    setBusy(false)
   }
 
   function pickTeacher(id) {
@@ -475,9 +539,39 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
           {field('المادة (اختياري)', <input value={f.title || ''} onChange={set('title')} placeholder="مثال: رياضيات" />, 'ti')}
           {field('المصدر', <select value={f.source || 'admin'} onChange={set('source')}><option value="admin">من الأدمن</option><option value="student">حجز طالب</option><option value="contract">عقد دوري</option></select>, 'src')}
         </div>
+        {conflictAnalysis && (
+          <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 10 }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 900, fontSize: 14, color: '#9a3412' }}>تحليل التعارض</p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>✓ {conflictAnalysis.free.length} أيام متاحة</span>
+              <span style={{ background: '#fee2e2', color: '#991b1b', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>✗ {conflictAnalysis.conflicting.length} أيام متعارضة</span>
+            </div>
+            {conflictAnalysis.conflicting.map(c => (
+              <div key={c.date} style={{ background: '#fff', border: '1px solid #fecdd3', borderRadius: 8, padding: 8, marginBottom: 6, fontSize: 12 }}>
+                <div style={{ fontWeight: 800 }}>{arabicDate(c.date)}</div>
+                <div className="muted">تعارض مع: {c.conflictWith.teacherName} ({c.conflictWith.hallName})</div>
+                {conflictAnalysis.altHalls[c.date] && conflictAnalysis.altHalls[c.date].length > 0 && (
+                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: 700, color: '#059669' }}>تحويل لـ:</span>
+                    <select value={overflowPlan[c.date] || ''} onChange={e => setOverflowPlan({ ...overflowPlan, [c.date]: e.target.value })} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 6, border: '1.5px solid #d1d5db' }}>
+                      <option value="">...</option>
+                      {conflictAnalysis.altHalls[c.date].map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                {!conflictAnalysis.altHalls[c.date] && <div className="muted" style={{ color: '#dc2626', marginTop: 2 }}>لا توجد قاعة بديلة متاحة</div>}
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-ok btn-sm" disabled={busy || !Object.values(overflowPlan).some(v => v)} onClick={saveWithOverflow}>حفظ مع تحويل</button>
+              {conflictAnalysis.free.length > 0 && <button className="btn btn-ghost btn-sm" onClick={saveFreeOnly}>حفظ الأيام المتاحة فقط</button>}
+              <button className="btn btn-danger btn-sm" onClick={() => setConflictAnalysis(null)}>إلغاء</button>
+            </div>
+          </div>
+        )}
         <div className="modal-foot">
           <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-          <button className="btn btn-primary" disabled={busy} onClick={submit}>{busy ? '...' : 'حفظ'}</button>
+          <button className="btn btn-primary" disabled={busy || !!conflictAnalysis} onClick={submit}>{busy ? '...' : 'حفظ'}</button>
         </div>
       </div>
     </div>
