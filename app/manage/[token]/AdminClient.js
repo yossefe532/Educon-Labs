@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  DAY_NAMES, fmtTime, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr, bookingTimeRange, arabicDate
+  DAY_NAMES, fmtTime, fmtTimeShort, timeOptions, bookingsForDay, waLink, addDays, weekdayOf, dateStr, todayStr, bookingTimeRange, arabicDate
 } from '@/lib/time'
 
 const HOUR_H = 46
@@ -259,7 +259,7 @@ function ScheduleTab({ db, open, close, rows, onAdd, onBlock }) {
           <div className="hall-sec" key={hall.id}>
             <div className="hall-head"><span className="dot" style={{ background: hall.color }} />{hall.name}<span className="muted small"> — {hall.pricePerHour} ج/ساعة</span></div>
             <div className="week-grid">
-              <div className="time-col">{Array.from({ length: rows }, (_, i) => <div className="hcell" key={i}>{fmtTime(open + i * 60).slice(0, 5)}</div>)}</div>
+              <div className="time-col">{Array.from({ length: rows }, (_, i) => <div className="hcell" key={i}>{fmtTimeShort(open + i * 60)}</div>)}</div>
               {days.map((d, di) => (
                 <div className="day-col" key={d}>
                   <div className={`day-head ${d === today ? 'today' : ''}`}><div>{DAY_NAMES[weekdayOf(d)]}</div><div className="dnum">{d.slice(5)}</div></div>

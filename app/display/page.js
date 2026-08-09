@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { DAY_NAMES, fmtTime, bookingsForDay, addDays, weekdayOf, arabicDate, todayStr, dateStr, bookingTimeRange } from '@/lib/time'
+import { DAY_NAMES, fmtTime, fmtTimeShort, bookingsForDay, addDays, weekdayOf, arabicDate, todayStr, dateStr, bookingTimeRange } from '@/lib/time'
 
 const HOUR_H = 68
 
@@ -73,7 +73,7 @@ export default function Display() {
             <div className="sub">{s?.placeNameEn || 'EDUCON ACADEMY'}</div>
           </div>
           <div className="disp-clock">
-            <div className="time">{String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}<span style={{ fontSize: '0.5em', opacity: 0.6 }}>:{String(now.getSeconds()).padStart(2, '0')}</span></div>
+            <div className="time">{(() => { const h = now.getHours(); const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h; return `${h12}:${String(now.getMinutes()).padStart(2, '0')}` })()}<span style={{ fontSize: '0.5em', opacity: 0.6 }}>:{String(now.getSeconds()).padStart(2, '0')}</span> <span style={{ fontSize: '0.45em', opacity: 0.7 }}>{now.getHours() < 12 ? 'صباحًا' : 'مساءً'}</span></div>
             <div className="date">{arabicDate(today)}</div>
           </div>
         </header>
@@ -110,7 +110,7 @@ export default function Display() {
               <section className="disp-hall" key={hall.id}>
                 <div className="disp-hall-head"><span className="dot" style={{ background: hall.color }} />{hall.name}<span style={{ opacity: 0.6, fontWeight: 600, fontSize: 11 }}>{hall.pricePerHour} ج/ساعة</span></div>
                 <div className="disp-week-grid">
-                  <div style={{ width: 46, flexShrink: 0 }}><div style={{ height: 40 }} />{Array.from({ length: rows }, (_, i) => <div key={i} style={{ height: HOUR_H, fontSize: 9, color: '#565060', fontWeight: 700, paddingTop: 2, paddingRight: 6 }}>{fmtTime(open + i * 60).slice(0, 5)}</div>)}</div>
+                  <div style={{ width: 46, flexShrink: 0 }}><div style={{ height: 40 }} />{Array.from({ length: rows }, (_, i) => <div key={i} style={{ height: HOUR_H, fontSize: 9, color: '#565060', fontWeight: 700, paddingTop: 2, paddingRight: 6 }}>{fmtTimeShort(open + i * 60)}</div>)}</div>
                   {days.map((d, di) => {
                     const blks = dayBookings[di]; const isToday = d === today
                     return (

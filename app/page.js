@@ -1,4 +1,5 @@
 import { loadDB } from '@/lib/storage'
+import { fmtTime } from '@/lib/time'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,7 @@ export default async function Home() {
                 <tr key={h.id}>
                   <td><span className="dot" style={{ background: h.color }} />{h.name}</td>
                   <td>{h.pricePerHour} جنيه</td>
-                  <td className="muted">{Math.floor(openTime / 60)}:{String(openTime % 60).padStart(2, '0')} - {Math.floor(closeTime / 60)}:{String(closeTime % 60).padStart(2, '0')}</td>
+                  <td className="muted">{fmtTime(openTime)} - {fmtTime(closeTime)}</td>
                 </tr>
               ))}
             </tbody>
