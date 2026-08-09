@@ -412,20 +412,26 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, 
   async function saveWithOverflow() {
     const candidate = buildCandidate()
     setBusy(true)
-    const r = await mutate({ action: editId ? 'updateBooking' : 'addBooking', ...(editId ? { id: editId, ...candidate } : candidate) })
-    if (r && r.ok) {
-      const bookingId = r.id || editId
-      for (const [date, altHallId] of Object.entries(overflowPlan)) {
-        if (altHallId && bookingId) {
-          await mutate({ action: 'setOverride', bookingId, date, altHallId })
+    try {
+      const r = await mutate({ action: editId ? 'updateBooking' : 'addBooking', ...(editId ? { id: editId, ...candidate } : candidate) })
+      if (r && r.ok) {
+        const bookingId = r.id || editId
+        for (const [date, altHallId] of Object.entries(overflowPlan)) {
+          if (altHallId && bookingId) {
+            await mutate({ action: 'setOverride', bookingId, date, altHallId })
+          }
         }
+        showToast('تم الحفظ مع التحويل')
+        await fetchState()
+        setConflictAnalysis(null)
+        onClose()
+      } else {
+        showToast(r?.error || 'حدث خطأ', true)
       }
-      showToast('تم الحفظ مع التحويل')
-      await fetchState()
+    } catch (e) {
+      showToast(e.message || 'حدث خطأ', true)
     }
-    setConflictAnalysis(null)
     setBusy(false)
-    onClose()
   }
 
   async function saveFreeOnly() {
@@ -450,8 +456,12 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, 
       if (!candidate.days.length) { alert('كل الأيام متعارضة'); return }
     }
     setBusy(true)
-    await onSave(candidate)
-    setConflictAnalysis(null)
+    try {
+      await onSave(candidate)
+      setConflictAnalysis(null)
+    } catch (e) {
+      showToast(e.message || 'حدث خطأ', true)
+    }
     setBusy(false)
   }
 
@@ -550,6 +560,7 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, 
               <div key={c.date} style={{ background: '#fff', border: '1px solid #fecdd3', borderRadius: 8, padding: 8, marginBottom: 6, fontSize: 12 }}>
                 <div style={{ fontWeight: 800 }}>{arabicDate(c.date)}</div>
                 <div className="muted">تعارض مع: {c.conflictWith.teacherName} ({c.conflictWith.hallName})</div>
+                {c.conflictEndDate && <div style={{ color: '#b45309', fontWeight: 700, fontSize: 11 }}>التعاقد ينتهي: {arabicDate(c.conflictEndDate)}</div>}
                 {conflictAnalysis.altHalls[c.date] && conflictAnalysis.altHalls[c.date].length > 0 && (
                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontWeight: 700, color: '#059669' }}>تحويل لـ:</span>
