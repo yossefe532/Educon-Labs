@@ -144,7 +144,7 @@ export async function POST(request) {
       }
       if (v.error) return bad(v.error)
       if (!/^\d{10,15}$/.test(String(body.phone || '').replace(/\D/g, ''))) return bad('رقم التواصل غير صحيح')
-      const b = { ...v.value, id: uid(), hallName: hall.name, status: 'pending', source: 'public', createdAt: Date.now() }
+      const b = { ...v.value, id: uid(), hallName: hall.name, status: 'pending', source: 'student', createdAt: Date.now() }
       const conflicts = findConflicts(cur.bookings, b)
       if (conflicts.length) return bad('هذا الموعد محجوز بالفعل، اختر وقتًا آخر')
       cur.bookings.push(b)
@@ -232,7 +232,7 @@ export async function POST(request) {
         if (v.error) return bad(v.error)
         hall = cur.halls.find(h => h.id === v.value.hallId)
         if (!hall) return bad('القاعة غير موجودة')
-        b = { ...v.value, id: uid(), hallName: hall.name, status: body.status === 'pending' ? 'pending' : 'confirmed', source: 'admin', createdAt: Date.now() }
+        b = { ...v.value, id: uid(), hallName: hall.name, status: body.status === 'pending' ? 'pending' : 'confirmed', source: body.source || 'admin', createdAt: Date.now() }
         const conflicts = findConflicts(cur.bookings, b)
         if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
         cur.bookings.push(b)

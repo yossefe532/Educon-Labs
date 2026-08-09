@@ -246,7 +246,7 @@ function ScheduleTab({ db, open, close, rows, onAdd, onBlock }) {
           <button className="btn btn-ghost btn-sm" onClick={() => { const d = new Date(); const off = (d.getDay() + 1) % 7; const s = new Date(d); s.setDate(s.getDate() - off); setWeekStart(dateStr(s)) }}>هذا الأسبوع</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>→</button>
         </div>
-        <button className="btn btn-primary" onClick={() => onAdd({ hallId: db.halls[0]?.id || '', type: 'single', date: today, start: open, end: Math.min(open + 60, close), days: [], startDate: today, endDate: addDays(today, 365), teacherName: '', title: '', status: 'confirmed' })}>+ إضافة موعد</button>
+        <button className="btn btn-primary" onClick={() => onAdd({ hallId: db.halls[0]?.id || '', type: 'single', date: today, start: open, end: Math.min(open + 60, close), days: [], startDate: today, endDate: addDays(today, 365), teacherName: '', title: '', status: 'confirmed', source: 'admin' })}>+ إضافة موعد</button>
       </div>
       <div className="chip-row">
         <button className={`chip ${hallFilter === 'all' ? 'active' : ''}`} onClick={() => setHallFilter('all')}>الكل</button>
@@ -271,11 +271,15 @@ function ScheduleTab({ db, open, close, rows, onAdd, onBlock }) {
                       const top = ((tr.start - open) / (close - open)) * 100
                       const h = ((tr.end - tr.start) / (close - open)) * 100
                       const tPhoto = teacherMap[b.teacherName]?.photo
+                      const isCancelled = b.status === 'cancelled'
+                      const isCompleted = b.status === 'completed'
                       return (
-                        <div key={b.id} className={`blk ${b.status === 'pending' ? 'pending' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: blkBg(hall.color) }} onClick={e => { e.stopPropagation(); onBlock(b) }}>
+                        <div key={b.id} className={`blk ${b.status === 'pending' ? 'pending' : ''} ${isCancelled ? 'cancelled' : ''} ${isCompleted ? 'completed' : ''}`} style={{ top: top + '%', height: `calc(${h}% - 4px)`, background: isCancelled ? '#9ca3af' : isCompleted ? '#6366f1' : blkBg(hall.color), opacity: isCancelled ? 0.5 : isCompleted ? 0.6 : 1 }} onClick={e => { e.stopPropagation(); onBlock(b) }}>
                           <div className="blk-row">{tPhoto && <img src={tPhoto} className="blk-avatar" />}<span>{b.teacherName}</span></div>
                           {b.title && <span className="t">{b.title}</span>}
                           <span className="t">{fmtTime(tr.start)} - {fmtTime(tr.end)}</span>
+                          {isCancelled && <span className="t" style={{ color: '#fecdd3' }}>ملغي</span>}
+                          {b.source && <span className="t" style={{ opacity: 0.7 }}>{b.source === 'admin' ? 'أدمن' : b.source === 'student' ? 'طالب' : b.source === 'contract' ? 'عقد' : ''}</span>}
                         </div>
                       )
                     })}
@@ -317,6 +321,7 @@ function RequestsTab({ db, run, waLink }) {
       {pending.map(b => (
         <div className="req-card" key={b.id}>
           <span className="req-badge">بانتظار الاعتماد</span>
+          {b.source && <span style={{ background: '#e0e7ff', color: '#3730a3', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '2px 8px' }}>{b.source === 'student' ? 'طالب' : b.source === 'contract' ? 'عقد' : b.source}</span>}
           <div className="who">
             <h4>{b.teacherName} {b.title && <span className="muted">({b.title})</span>}</h4>
             <div className="small muted">{bookingSummary(b)}</div>
@@ -361,7 +366,7 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
     if (f.end <= f.start && f.type !== 'multi') return alert('وقت النهاية بعد البداية')
     if (!f.teacherName?.trim()) return alert('اسم المدرس')
     setBusy(true)
-    const p = { hallId: f.hallId, type: f.type, start: Number(f.start), end: Number(f.end), teacherName: f.teacherName.trim(), title: (f.title || '').trim(), status: f.status || 'confirmed', phone: f.phone || '' }
+    const p = { hallId: f.hallId, type: f.type, start: Number(f.start), end: Number(f.end), teacherName: f.teacherName.trim(), title: (f.title || '').trim(), status: f.status || 'confirmed', phone: f.phone || '', source: f.source || 'admin' }
     if (f.type === 'single') p.date = f.date
     else if (f.type === 'multi') { p.slots = f.slots || []; p.date = f.slots[0]?.date || f.date }
     else { p.days = f.days; p.startDate = f.startDate; p.endDate = f.endDate }
@@ -431,6 +436,7 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
         <div className="form-grid">
           {field('المدرس', <select value="" onChange={e => pickTeacher(e.target.value)}><option value="">اختر مدرسًا...</option>{db.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>, 'tt')}
           {field('المادة (اختياري)', <input value={f.title || ''} onChange={set('title')} placeholder="مثال: رياضيات" />, 'ti')}
+          {field('المصدر', <select value={f.source || 'admin'} onChange={set('source')}><option value="admin">من الأدمن</option><option value="student">حجز طالب</option><option value="contract">عقد دوري</option></select>, 'src')}
         </div>
         {field('اسم المدرس', <input value={f.teacherName || ''} onChange={set('tn')} placeholder="الاسم" />, 'tn2')}
         <div className="modal-foot">
@@ -448,15 +454,25 @@ function DetailModal({ booking: b, db, onClose, onEdit, onApprove, onDelete }) {
   const isMulti = b.type === 'multi'
   const daysTxt = isRec ? b.days.map(d => DAY_NAMES[d]).join('، ') : isMulti ? `${b.slots?.length || 0} أيام` : DAY_NAMES[weekdayOf(b.date)]
   const dateTxt = isRec ? `${b.startDate} حتى ${b.endDate}` : isMulti ? (b.slots || []).map(s => `${arabicDate(s.date)} ${fmtTime(s.start)}-${fmtTime(s.end)}`).join('، ') : b.date
+  const statusMap = { pending: ['بانتظار الاعتماد', '#d97706', '#fef3c7'], confirmed: ['مؤكد', '#059669', '#ecfdf5'], cancelled: ['ملغي', '#dc2626', '#fef2f2'], completed: ['منتهي', '#6366f1', '#eef2ff'] }
+  const sourceMap = { admin: 'من الأدمن', student: 'حجز طالب', public: 'حجز عام', contract: 'عقد دوري' }
+  const [label, bg] = statusMap[b.status] || ['غير معروف', '#6b7280', '#f3f4f6']
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal">
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span className="dot" style={{ background: hall?.color }} />{b.teacherName}{b.status === 'pending' && <span className="req-badge">بانتظار</span>}</h3>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span className="dot" style={{ background: hall?.color }} />{b.teacherName}</h3>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ background: bg, color: bg === '#fef3c7' ? '#92400e' : bg === '#ecfdf5' ? '#065f46' : bg === '#fef2f2' ? '#991b1b' : bg === '#eef2ff' ? '#3730a3' : '#fff', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 800 }}>{label}</span>
+          {b.source && <span style={{ background: '#f3f4f6', color: '#374151', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>{sourceMap[b.source] || b.source}</span>}
+          <span style={{ background: '#f3f4f6', color: '#374151', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>{b.type === 'single' ? 'يوم واحد' : b.type === 'multi' ? 'مواعيد متعددة' : 'عقد دوري'}</span>
+        </div>
         <p className="muted" style={{ marginTop: 0 }}>{b.hallName} — {daysTxt} ({dateTxt}) — {isRec || isMulti ? '' : `${fmtTime(b.start)}-${fmtTime(b.end)}`}{isRec && <span className="small block">تكرار أسبوعي</span>}{isMulti && <span className="small block">مواعيد متعددة</span>}</p>
         {b.title && <p><b>المادة:</b> {b.title}</p>}
         {b.phone && <p dir="ltr" style={{ textAlign: 'right' }}><b>الهاتف:</b> {b.phone}</p>}
         <div className="modal-foot">
           {b.status === 'pending' && <button className="btn btn-ok" onClick={onApprove}>اعتماد</button>}
+          {b.status === 'confirmed' && <button className="btn btn-ghost btn-sm" style={{ color: '#d97706' }} onClick={() => { if (confirm('إلغاء الحجز؟')) run('updateBooking', { id: b.id, status: 'cancelled' }, 'تم الإلغاء').then(() => onClose()) }}>إلغاء</button>}
+          {b.status === 'cancelled' && <button className="btn btn-ghost btn-sm" style={{ color: '#059669' }} onClick={() => { if (confirm('إعادة تأكيد؟')) run('updateBooking', { id: b.id, status: 'confirmed' }, 'تم التأكيد').then(() => onClose()) }}>إعادة تأكيد</button>}
           {b.phone && b.status === 'confirmed' && <a className="btn btn-whatsapp" target="_blank" rel="noreferrer" href={waLink(b.phone, `تأكيد موعد ${b.hallName}: ${daysTxt}`)}>واتساب</a>}
           <button className="btn btn-ghost" onClick={onEdit}>تعديل</button>
           <button className="btn btn-danger" onClick={onDelete}>حذف</button>
