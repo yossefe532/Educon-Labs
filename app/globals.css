@@ -16,8 +16,9 @@
 }
 
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 html, body { margin: 0; padding: 0; }
-body { font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; }
+body { font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
 input, select, textarea { font-family: inherit; font-size: 14px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); outline: none; width: 100%; }
@@ -91,8 +92,8 @@ input:focus, select:focus { border-color: var(--primary); }
 /* ADMIN */
 .admin-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .admin-topbar h2 { margin: 0; font-size: 20px; }
-.hall-sec { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 14px; overflow-x: auto; }
-.hall-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 800; font-size: 14px; position: sticky; right: 0; background: #fff; }
+.hall-sec { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.hall-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 800; font-size: 14px; position: sticky; right: 0; background: #fff; z-index: 2; }
 .week-grid { display: flex; min-width: 850px; }
 .time-col { width: 48px; flex-shrink: 0; border-left: 1px solid var(--line); }
 .time-col .hcell { height: 46px; display: flex; align-items: flex-start; justify-content: center; font-size: 10px; color: var(--muted); font-weight: 700; padding-top: 2px; }
@@ -136,7 +137,7 @@ input:focus, select:focus { border-color: var(--primary); }
 .hall-opt.sel { border-color: var(--primary); background: #fff5f5; box-shadow: 0 0 0 3px rgba(244,63,94,0.1); }
 .hall-opt h3 { margin: 0 0 3px; display: flex; align-items: center; gap: 6px; font-size: 15px; }
 .hall-opt .price { font-size: 13px; font-weight: 800; color: var(--primary-dark); }
-.date-pills { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.date-pills { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
 .date-pill { border: 2px solid var(--line); background: #fff; border-radius: 10px; padding: 7px 12px; text-align: center; cursor: pointer; min-width: 80px; flex-shrink: 0; }
 .date-pill:hover { border-color: var(--primary); }
 .date-pill.sel { border-color: var(--primary); background: #fff5f5; }
@@ -208,9 +209,96 @@ input:focus, select:focus { border-color: var(--primary); }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -20% 0; } }
 @keyframes tickerMove { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
-@media (max-width: 700px) { .modal { padding: 14px; } .form-grid { grid-template-columns: 1fr; } .settings-grid { grid-template-columns: 1fr; } }
-
 /* NOTIFICATIONS */
 .notif-bell { position: relative; }
 .notif-bell.active { animation: bellRing 0.5s ease; }
 @keyframes bellRing { 0%,100% { transform: rotate(0); } 20%,60% { transform: rotate(12deg); } 40%,80% { transform: rotate(-12deg); } }
+
+/* ========== MOBILE RESPONSIVE ========== */
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .card { padding: 14px; border-radius: 12px; }
+
+  /* Home */
+  .home-hero { padding: 24px 14px; border-radius: 14px; margin-top: 8px; }
+  .home-hero h1 { font-size: 22px; }
+  .home-hero .en { font-size: 11px; letter-spacing: 1px; }
+  .home-cards { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .home-card { padding: 16px 10px; }
+  .home-card .icon { font-size: 22px; }
+  .home-card h3 { font-size: 14px; }
+  .home-card .small { font-size: 11px; }
+  .price-table th, .price-table td { padding: 6px 8px; font-size: 12px; }
+
+  /* Admin topbar */
+  .admin-topbar { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .admin-topbar h2 { font-size: 17px; }
+  .admin-topbar > div:last-child { width: 100%; justify-content: flex-end; }
+
+  /* Tabs */
+  .tabbar { gap: 4px; }
+  .tab { padding: 6px 10px; font-size: 12px; }
+
+  /* Schedule grid - scroll horizontally */
+  .hall-sec { border-radius: 12px; }
+
+  /* Request cards */
+  .req-card { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .req-card .who { min-width: 0; width: 100%; }
+  .req-card > .btn, .req-card > a.btn { width: 100%; }
+
+  /* Settings */
+  .settings-grid { grid-template-columns: 1fr; gap: 10px; }
+  .url-row { flex-direction: column; }
+  .url-row input { width: 100%; }
+  .url-row .btn { width: 100%; }
+
+  /* Booking page */
+  .book-head { margin: 10px 0; }
+  .book-head h1 { font-size: 22px; }
+  .book-logo { width: 44px; height: 44px; font-size: 20px; }
+  .book-steps { gap: 4px; margin-bottom: 14px; }
+  .step-pill { font-size: 11px; padding: 4px 10px; }
+  .hall-pick { grid-template-columns: 1fr; gap: 8px; }
+  .hall-opt { padding: 12px; }
+  .hall-opt h3 { font-size: 14px; }
+  .date-pills { gap: 4px; }
+  .date-pill { min-width: 70px; padding: 6px 8px; }
+  .date-pill .dw { font-size: 11px; }
+  .form-grid { grid-template-columns: 1fr; gap: 8px; }
+  .success-wrap .big { font-size: 36px; }
+  .success-wrap h2 { font-size: 18px; }
+
+  /* Login */
+  .login-wrap { margin: 30px auto; padding: 0 16px; }
+  .login-card { padding: 22px 16px; }
+
+  /* Modal */
+  .modal { padding: 16px; border-radius: 14px; max-height: 90vh; }
+  .modal h3 { font-size: 16px; }
+  .modal-foot { flex-direction: column; }
+  .modal-foot .btn { width: 100%; }
+
+  /* Buttons */
+  .btn { padding: 10px 14px; font-size: 13px; }
+  .btn-sm { padding: 6px 10px; font-size: 11px; }
+
+  /* Form */
+  input, select, textarea { font-size: 16px; padding: 10px 12px; }
+
+  /* Hall cards */
+  .hall-card { flex-wrap: wrap; }
+  .hall-card .muted.small { font-size: 11px; }
+
+  /* Checkbox row */
+  .checkbox-row { gap: 4px; }
+  .checkbox-row label { padding: 6px 8px; font-size: 11px; }
+}
+
+@media (max-width: 420px) {
+  .home-cards { grid-template-columns: 1fr; }
+  .tabbar { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .tab { white-space: nowrap; flex-shrink: 0; }
+  .book-steps { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .step-pill { flex-shrink: 0; }
+}

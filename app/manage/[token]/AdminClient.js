@@ -357,11 +357,13 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
   function submit() {
     if (!f.hallId) return alert('اختر القاعة')
     if (f.type === 'recurring' && (!f.days || !f.days.length)) return alert('اختر الأيام')
-    if (f.end <= f.start) return alert('وقت النهاية بعد البداية')
+    if (f.type === 'multi' && (!f.slots || !f.slots.length)) return alert('أضف موعدًا واحدًا على الأقل')
+    if (f.end <= f.start && f.type !== 'multi') return alert('وقت النهاية بعد البداية')
     if (!f.teacherName?.trim()) return alert('اسم المدرس')
     setBusy(true)
     const p = { hallId: f.hallId, type: f.type, start: Number(f.start), end: Number(f.end), teacherName: f.teacherName.trim(), title: (f.title || '').trim(), status: f.status || 'confirmed', phone: f.phone || '' }
     if (f.type === 'single') p.date = f.date
+    else if (f.type === 'multi') { p.slots = f.slots || []; p.date = f.slots[0]?.date || f.date }
     else { p.days = f.days; p.startDate = f.startDate; p.endDate = f.endDate }
     onSave(p).finally(() => setBusy(false))
   }
@@ -371,24 +373,61 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave }) {
     if (t) setF({ ...f, teacherName: t.name, phone: t.phone || '' })
   }
 
+  function addSlot() {
+    if (!f.date) return alert('اختر التاريخ أولاً')
+    const slot = { date: f.date, start: Number(f.start), end: Number(f.end) }
+    setF({ ...f, slots: [...(f.slots || []), slot] })
+  }
+
+  function removeSlot(i) {
+    setF({ ...f, slots: f.slots.filter((_, idx) => idx !== i) })
+  }
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal">
         <h3>{editId ? 'تعديل الموعد' : 'موعد جديد'}</h3>
         <div className="form-grid">
           {field('القاعة', <select value={f.hallId} onChange={set('hallId')}><option value="">اختر</option>{db.halls.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}</select>, 'h')}
-          {field('النوع', <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })}><option value="single">يوم واحد</option><option value="recurring"> التعاقد الدوري</option></select>, 't')}
+          {field('النوع', <select value={f.type} onChange={e => setF({ ...f, type: e.target.value, days: f.days || [], startDate: f.startDate || todayStr(), endDate: f.endDate || addDays(todayStr(), 365), slots: f.slots || [] })}><option value="single">يوم واحد</option><option value="multi">مواعيد متعددة</option><option value="recurring">التعاقد الدوري</option></select>, 't')}
         </div>
-        {f.type === 'single' ? field('التاريخ', <input type="date" value={f.date} onChange={set('date')} />, 'd') : (
+        {f.type === 'single' && field('التاريخ', <input type="date" value={f.date} onChange={set('date')} />, 'd')}
+        {f.type === 'multi' && (
+          <>
+            <div className="form-grid">
+              {field('التاريخ', <input type="date" value={f.date} onChange={set('date')} />, 'd2')}
+              {field('من الساعة', <select value={f.start} onChange={set('start')}>{hours.filter(m => m < close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'ms')}
+              {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'me')}
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={addSlot} style={{ marginBottom: 8 }}>+ إضافة موعد</button>
+            {f.slots && f.slots.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                {f.slots.map((s, i) => (
+                  <div key={i} className="req-card" style={{ padding: '6px 10px', marginBottom: 4 }}>
+                    <span className="small muted">{arabicDate(s.date)} — {fmtTime(s.start)}-{fmtTime(s.end)}</span>
+                    <button className="btn btn-danger btn-sm" onClick={() => removeSlot(i)}>&times;</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {f.type === 'recurring' && (
           <>
             <div className="field"><span className="label">الأيام</span><div className="checkbox-row">{DAY_NAMES.map((n, i) => <label key={i}><input type="checkbox" checked={f.days?.includes(i)} onChange={e => setF({ ...f, days: e.target.checked ? [...(f.days || []), i] : (f.days || []).filter(d => d !== i) })} />{n}</label>)}</div></div>
             <div className="form-grid">{field('من', <input type="date" value={f.startDate} onChange={set('startDate')} />, 'sd')}{field('إلى', <input type="date" value={f.endDate} onChange={set('endDate')} />, 'ed')}</div>
+            <div className="form-grid">
+              {field('من الساعة', <select value={f.start} onChange={set('start')}>{hours.filter(m => m < close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 's')}
+              {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'e')}
+            </div>
           </>
         )}
-        <div className="form-grid">
-          {field('من الساعة', <select value={f.start} onChange={set('start')}>{hours.filter(m => m < close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 's')}
-          {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'e')}
-        </div>
+        {f.type === 'single' && (
+          <div className="form-grid">
+            {field('من الساعة', <select value={f.start} onChange={set('start')}>{hours.filter(m => m < close).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 's')}
+            {field('إلى الساعة', <select value={f.end} onChange={set('end')}>{hours.filter(m => m > f.start).map(m => <option key={m} value={m}>{fmtTime(m)}</option>)}</select>, 'e')}
+          </div>
+        )}
         <div className="form-grid">
           {field('المدرس', <select value="" onChange={e => pickTeacher(e.target.value)}><option value="">اختر مدرسًا...</option>{db.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>, 'tt')}
           {field('المادة (اختياري)', <input value={f.title || ''} onChange={set('title')} placeholder="مثال: رياضيات" />, 'ti')}
