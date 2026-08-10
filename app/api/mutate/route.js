@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import { loadDB, saveDB, withLock, defaultDB } from '@/lib/storage'
 import { checkSession, makeSessionToken } from '@/lib/auth'
 import crypto from 'crypto'
-import { uid, findConflicts, HALL_COLORS, toMin, fmtTime, isPendingOld, isBookingDatePast } from '@/lib/time'
+import { uid, findConflicts, HALL_COLORS, toMin, fmtTime, isPendingOld, isBookingDatePast, dateStr, weekdayOf, parseLocal } from '@/lib/time'
 import { notifyAdmin, notifyTeacher, cleanupExpiredSubscriptions } from '@/lib/notifications'
 
 const genToken = (suffix) => crypto.createHash('sha256').update((process.env.APP_SECRET || 'educon-academy-2026') + '::' + (suffix || '')).digest('hex').slice(0, 32)
@@ -248,8 +248,51 @@ export async function POST(request) {
           cur.teachers.push({ id: uid(), name: v.value.teacherName, phone: String(body.phone || '').trim(), photo: '' })
         }
         b = { ...v.value, id: uid(), hallName: hall.name, status: body.status === 'pending' ? 'pending' : 'confirmed', source: body.source || 'admin', createdAt: Date.now() }
-        const conflicts = findConflicts(cur.bookings, b)
-        if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
+        const overflowOverrides = body.overflowOverrides && typeof body.overflowOverrides === 'object' ? body.overflowOverrides : null
+        if (overflowOverrides && Object.keys(overflowOverrides).length) {
+          const allDates = []
+          if (b.type === 'single') {
+            allDates.push({ date: b.date, start: b.start, end: b.end })
+          } else if (b.type === 'multi') {
+            for (const s of (b.slots || [])) allDates.push({ date: s.date, start: s.start, end: s.end })
+          } else {
+            const sd = parseLocal(b.startDate)
+            const ed = parseLocal(b.endDate)
+            const d = new Date(sd)
+            while (d <= ed) {
+              const ds = dateStr(d)
+              const dow = weekdayOf(ds)
+              if (b.days.includes(dow)) {
+                const dt = b.dayTimes?.[dow]
+                allDates.push({ date: ds, start: dt?.start ?? b.start, end: dt?.end ?? b.end })
+              }
+              d.setDate(d.getDate() + 1)
+            }
+          }
+          const overflowErrors = []
+          const overrideHalls = {}
+          for (const item of allDates) {
+            const altId = overflowOverrides[item.date]
+            if (altId) {
+              const altHall = cur.halls.find(h => h.id === altId)
+              if (!altHall) { overflowErrors.push(item.date + ': القاعة البديلة غير موجودة'); continue }
+              overrideHalls[item.date] = { hallId: altHall.id, hallName: altHall.name }
+              const testB = { ...b, type: 'single', date: item.date, start: item.start, end: item.end, hallId: altHall.id, dayTimes: undefined }
+              const c = findConflicts(cur.bookings, testB, null)
+              if (c.length) overflowErrors.push(item.date + ': القاعة البديلة ' + altHall.name + ' محجوزة')
+            } else {
+              const testB = { ...b, type: 'single', date: item.date, start: item.start, end: item.end, dayTimes: undefined }
+              const c = findConflicts(cur.bookings, testB, null)
+              if (c.length) overflowErrors.push(item.date + ': يوجد تعارض')
+            }
+          }
+          if (overflowErrors.length) return bad(overflowErrors.slice(0, 3).join(' | '))
+          if (Object.keys(overrideHalls).length) b.overrideHalls = overrideHalls
+          b.status = 'confirmed'
+        } else {
+          const conflicts = findConflicts(cur.bookings, b)
+          if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
+        }
         cur.bookings.push(b)
         await saveDB(cur)
         return NextResponse.json({ ok: true, id: b.id })
@@ -265,8 +308,51 @@ export async function POST(request) {
           cur.teachers.push({ id: uid(), name: v.value.teacherName, phone: String(body.phone || '').trim(), photo: '' })
         }
         const next = { ...b, ...v.value, id: b.id, hallName: hall.name, status: body.status === 'pending' ? 'pending' : 'confirmed' }
-        const conflicts = findConflicts(cur.bookings, next, b.id)
-        if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
+        const updOverflowOverrides = body.overflowOverrides && typeof body.overflowOverrides === 'object' ? body.overflowOverrides : null
+        if (updOverflowOverrides && Object.keys(updOverflowOverrides).length) {
+          const allDates = []
+          if (next.type === 'single') {
+            allDates.push({ date: next.date, start: next.start, end: next.end })
+          } else if (next.type === 'multi') {
+            for (const s of (next.slots || [])) allDates.push({ date: s.date, start: s.start, end: s.end })
+          } else {
+            const sd = parseLocal(next.startDate)
+            const ed = parseLocal(next.endDate)
+            const d = new Date(sd)
+            while (d <= ed) {
+              const ds = dateStr(d)
+              const dow = weekdayOf(ds)
+              if (next.days.includes(dow)) {
+                const dt = next.dayTimes?.[dow]
+                allDates.push({ date: ds, start: dt?.start ?? next.start, end: dt?.end ?? next.end })
+              }
+              d.setDate(d.getDate() + 1)
+            }
+          }
+          const overflowErrors = []
+          const overrideHalls = {}
+          for (const item of allDates) {
+            const altId = updOverflowOverrides[item.date]
+            if (altId) {
+              const altHall = cur.halls.find(h => h.id === altId)
+              if (!altHall) { overflowErrors.push(item.date + ': القاعة البديلة غير موجودة'); continue }
+              overrideHalls[item.date] = { hallId: altHall.id, hallName: altHall.name }
+              const testB = { ...next, type: 'single', date: item.date, start: item.start, end: item.end, hallId: altHall.id, dayTimes: undefined }
+              const c = findConflicts(cur.bookings, testB, next.id)
+              if (c.length) overflowErrors.push(item.date + ': القاعة البديلة ' + altHall.name + ' محجوزة')
+            } else {
+              const testB = { ...next, type: 'single', date: item.date, start: item.start, end: item.end, dayTimes: undefined }
+              const c = findConflicts(cur.bookings, testB, next.id)
+              if (c.length) overflowErrors.push(item.date + ': يوجد تعارض')
+            }
+          }
+          if (overflowErrors.length) return bad(overflowErrors.slice(0, 3).join(' | '))
+          if (Object.keys(overrideHalls).length) next.overrideHalls = overrideHalls
+          next.status = 'confirmed'
+        } else {
+          const conflicts = findConflicts(cur.bookings, next, next.id)
+          if (conflicts.length) return NextResponse.json({ ok: false, conflict: true, conflicts: conflicts.slice(0, 3) })
+        }
         cur.bookings[cur.bookings.indexOf(b)] = next
         await saveDB(cur)
         return NextResponse.json({ ok: true })

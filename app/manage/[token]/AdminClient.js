@@ -413,18 +413,11 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, 
     const candidate = buildCandidate()
     setBusy(true)
     try {
-      const r = await mutate({ action: editId ? 'updateBooking' : 'addBooking', ...(editId ? { id: editId, ...candidate } : candidate) })
+      const payload = { action: editId ? 'updateBooking' : 'addBooking', ...(editId ? { id: editId, ...candidate } : candidate), overflowOverrides: overflowPlan }
+      const r = await mutate(payload)
       if (!r || !r.ok) {
         showToast(r?.error || 'حدث خطأ في الحفظ', true)
         return
-      }
-      const bookingId = r.id || editId
-      if (bookingId) {
-        for (const [date, altHallId] of Object.entries(overflowPlan)) {
-          if (altHallId) {
-            try { await mutate({ action: 'setOverride', bookingId, date, altHallId }) } catch {}
-          }
-        }
       }
       showToast('تم الحفظ مع التحويل')
       await fetchState()
