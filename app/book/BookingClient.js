@@ -78,7 +78,6 @@ export default function Booking() {
   async function submit() {
     setErr(null)
     if (!hallId) return setErr('اختر القاعة')
-    const digits = phone.replace(/\D/g, '')
     if (!name.trim()) return setErr('اكتب اسمك')
     if (digits.length < 10 || digits.length > 15) return setErr('رقم واتساب غير صحيح')
 
@@ -112,6 +111,7 @@ export default function Booking() {
 
   const hall = halls.find(h => h.id === hallId)
   const waPhone = '201067949503'
+  const digits = phone.replace(/\D/g, '')
   const bookingSummary = done ? (() => {
     if (bookingType === 'single') return `${hall?.name} — ${arabicDate(date)} — ${fmtTime(start)}-${fmtTime(end)}`
     if (bookingType === 'multi') return `${hall?.name} — ${slots.length} أيام — ${slots.map(s => `${arabicDate(s.date)} ${fmtTime(s.start)}-${fmtTime(s.end)}`).join('، ')}`

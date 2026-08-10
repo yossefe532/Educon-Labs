@@ -73,6 +73,12 @@ export default function Admin({ token }) {
   }, [fetchState])
 
   useEffect(() => {
+    if (!authed) return
+    const t = setInterval(() => fetchState().catch(() => {}), 20000)
+    return () => clearInterval(t)
+  }, [authed, fetchState])
+
+  useEffect(() => {
     if (!authed || !('serviceWorker' in navigator) || !('PushManager' in window)) return
     setNotifSupported(true)
     setNotifPerm(Notification.permission)
