@@ -191,7 +191,7 @@ export default function Admin({ token }) {
       {tab === 'teachers' && <TeachersTab db={db} run={run} onEdit={t => setModal({ kind: 'teacher', teacher: t })} />}
       {tab === 'settings' && <SettingsTab db={db} run={run} token={token} />}
 
-      {modal?.kind === 'booking' && <BookingModal initial={modal.initial} db={db} open={open} close={close} editId={modal.editId} onClose={() => setModal(null)} run={run} mutate={mutate} fetchState={fetchState} onSave={async p => { const r = await run(modal.editId ? 'updateBooking' : 'addBooking', modal.editId ? { id: modal.editId, ...p } : p, modal.editId ? 'تم التعديل' : 'تمت الإضافة'); if (r) { setModal(null); return r } return null }} />}
+      {modal?.kind === 'booking' && <BookingModal initial={modal.initial} db={db} open={open} close={close} editId={modal.editId} onClose={() => setModal(null)} run={run} mutate={mutate} fetchState={fetchState} showToast={showToast} onSave={async p => { const r = await run(modal.editId ? 'updateBooking' : 'addBooking', modal.editId ? { id: modal.editId, ...p } : p, modal.editId ? 'تم التعديل' : 'تمت الإضافة'); if (r) { setModal(null); return r } return null }} />}
       {modal?.kind === 'detail' && <DetailModal booking={modal.booking} db={db} run={run} onClose={() => setModal(null)} onEdit={() => { const b = modal.booking; setModal({ kind: 'booking', initial: b.type === 'single' ? { hallId: b.hallId, type: 'single', date: b.date, days: [], startDate: '', endDate: '', start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin' } : { hallId: b.hallId, type: b.type || 'recurring', date: '', days: b.days, startDate: b.startDate, endDate: b.endDate, start: b.start, end: b.end, teacherName: b.teacherName, title: b.title, status: b.status, source: b.source || 'admin', dayTimes: b.dayTimes || {}, slots: b.slots || [] }, editId: b.id }) }} onApprove={() => run('approveBooking', { id: modal.booking.id }, 'تم الاعتماد').then(() => setModal(null))} onDelete={() => { if (confirm('حذف؟')) run('deleteBooking', { id: modal.booking.id }, 'تم الحذف').then(() => setModal(null)) }} />}
       {modal?.kind === 'hall' && <HallModal hall={modal.hall} onClose={() => setModal(null)} onSave={async p => { if (await run('updateHall', { id: modal.hall.id, ...p }, 'تم التحديث')) setModal(null) }} />}
       {modal?.kind === 'teacher' && <TeacherModal teacher={modal.teacher} onClose={() => setModal(null)} onSave={async p => { if (await run('updateTeacher', { id: modal.teacher.id, ...p }, 'تم التحديث')) setModal(null) }} />}
@@ -360,7 +360,7 @@ function RequestsTab({ db, run, waLink }) {
   )
 }
 
-function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, mutate, fetchState }) {
+function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, mutate, fetchState, showToast }) {
   const [f, setF] = useState({ ...initial })
   const [busy, setBusy] = useState(false)
   const [conflictAnalysis, setConflictAnalysis] = useState(null)
@@ -571,7 +571,7 @@ function BookingModal({ initial, db, open, close, editId, onClose, onSave, run, 
               </div>
             ))}
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-              <button className="btn btn-ok btn-sm" disabled={busy || !Object.values(overflowPlan).some(v => v)} onClick={saveWithOverflow}>حفظ مع تحويل</button>
+              <button className="btn btn-ok btn-sm" disabled={busy || !Object.values(overflowPlan).some(v => v)} onClick={saveWithOverflow}>{busy ? 'جاري الحفظ...' : 'حفظ مع تحويل'}</button>
               {conflictAnalysis.free.length > 0 && <button className="btn btn-ghost btn-sm" onClick={saveFreeOnly}>حفظ الأيام المتاحة فقط</button>}
               <button className="btn btn-danger btn-sm" onClick={() => setConflictAnalysis(null)}>إلغاء</button>
             </div>
